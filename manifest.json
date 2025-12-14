@@ -1,0 +1,32 @@
+{
+    "name": "Landslide Hazard Map",
+    "short_name": "LHZM",
+    "description": "Landslide Hazard Zonation Map of Sri Lanka - View hazard zones, incidents, and terrain data",
+    "start_url": "index.html",
+    "display": "standalone",
+    "background_color": "#0f172a",
+    "theme_color": "#8b5cf6",
+    "orientation": "portrait",
+    "scope": ".",
+    "icons": [
+        {
+            "src": "icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ],
+    "categories": [
+        "maps",
+        "utilities",
+        "government"
+    ],
+    "lang": "en",
+    "dir": "ltr"
+}
