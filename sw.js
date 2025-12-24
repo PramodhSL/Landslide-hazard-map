@@ -1,0 +1,57 @@
+const CACHE_NAME = 'landslide-map-v19';
+const ASSETS_TO_CACHE = [
+    './',
+    './index.html',
+    './manifest.json',
+    './icon-192.png',
+    './icon-512.png',
+    './maplibre-gl.css',
+    './maplibre-gl.js',
+    './pmtiles.js',
+    './early_warning.geojson'
+];
+
+// Install Event: Cache core assets
+self.addEventListener('install', (event) => {
+    // Force this new service worker to become the active one, avoiding "waiting" state
+    self.skipWaiting();
+    event.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => {
+            console.log('[Service Worker] Caching all: app shell and content');
+            return cache.addAll(ASSETS_TO_CACHE);
+        })
+    );
+});
+
+// Activate Event: Clean up old caches
+self.addEventListener('activate', (event) => {
+    // Take control of all open pages immediately
+    event.waitUntil(clients.claim());
+    event.waitUntil(
+        caches.keys().then((keyList) => {
+            return Promise.all(keyList.map((key) => {
+                if (key !== CACHE_NAME) {
+                    return caches.delete(key);
+                }
+            }));
+        })
+    );
+});
+
+// Fetch Event: Serve from cache, fallback to network
+self.addEventListener('fetch', (event) => {
+    // Skip PMTiles files (allow range requests)
+    // Check both URL extension and Range header to be safe
+    const url = event.request.url;
+    if (url.includes('.pmtiles') || event.request.headers.has('range')) {
+        return;
+    }
+
+    event.respondWith(
+        caches.match(event.request).then((response) => {
+            return response || fetch(event.request);
+        })
+    );
+});
+
+
