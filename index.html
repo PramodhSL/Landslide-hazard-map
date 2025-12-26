@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#8b5cf6">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="description"
+        content="Landslide Hazard Zonation Map of Sri Lanka - View hazard zones, incidents, and terrain data">
+    <title>Landslide Hazard Zonation Map</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="maplibre-gl.css" rel="stylesheet" />
+    <link href="style.css" rel="stylesheet" />
+</head>
+
+<body>
+    <div id="loading-indicator" class="active">
+        <div class="spinner"></div>
+        <p>Loading Maps...</p>
+        <div class="progress-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <div id="loading-status">Initializing...</div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <div id="map"></div>
+
+    <!-- Search Box -->
+    <div class="search-container">
+        <div class="search-box">
+            <div class="search-input-wrapper">
+                <span class="search-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                </span>
+                <input type="text" id="search-input" placeholder="Search location in Sri Lanka..." autocomplete="off">
+                <button id="clear-search">×</button>
+            </div>
+            <div id="search-results"></div>
+        </div>
+    </div>
+
+    <div class="controls-panel">
+        <div class="controls-header" id="controls-toggle">
+            <h3>Map Controls</h3>
+            <button class="controls-toggle-btn">▼</button>
+        </div>
+        <div class="controls-content">
+            <!-- Base Map Section -->
+            <div class="layer-section active"> <!-- Open by default -->
+                <div class="layer-header">
+                    <h4>Base Map</h4>
+                    <span class="icon">▼</span>
+                </div>
+                <div class="layer-content">
+                    <div class="basemap-switcher">
+                        <div class="basemap-card active" data-basemap="osm">
+                            <div class="basemap-thumbnail street"></div>
+                            <div class="basemap-label">Street Map</div>
+                        </div>
+                        <div class="basemap-card" data-basemap="satellite">
+                            <div class="basemap-thumbnail satellite"></div>
+                            <div class="basemap-label">Satellite</div>
+                        </div>
+                        <div class="basemap-card" data-basemap="hybrid">
+                            <div class="basemap-thumbnail hybrid"></div>
+                            <div class="basemap-label">Hybrid</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hazard Layers Section -->
+            <div class="layer-section active"> <!-- Open by default -->
+                <div class="layer-header">
+                    <h4>Hazard Layers</h4>
+                    <span class="icon">▼</span>
+                </div>
+                <div class="layer-content">
+                    <div class="layer-toggle">
+                        <span class="layer-label">LHZM 1:10,000</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="layer-10k" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="opacity-control">
+                        <span class="opacity-label">Opacity</span>
+                        <input type="range" id="opacity-10k" min="0" max="100" value="60">
+                    </div>
+                    <div class="layer-toggle">
+                        <span class="layer-label">LHZM 1:50,000</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="layer-50k" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="opacity-control">
+                        <span class="opacity-label">Opacity</span>
+                        <input type="range" id="opacity-50k" min="0" max="100" value="60">
+                    </div>
+                    <div class="layer-toggle">
+                        <span class="layer-label">Reported Incidents</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="layer-warning" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="layer-toggle">
+                        <span class="layer-label">Satellite Detected Landslides</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="layer-satellite-ls">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+
+                    <div class="layer-toggle">
+                        <span class="layer-label">Contours (20m)</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="layer-contours">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+
+        </div>
+    </div>
+
+    <!-- Floating Action Buttons -->
+    <div class="fab-container">
+        <button id="locate-btn" class="fab-btn" title="Find My Location">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon>
+            </svg>
+            <span class="fab-tooltip">Find Location</span>
+        </button>
+        <button id="bookmark-btn" class="fab-btn" title="Bookmarks"
+            style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon
+                    points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
+                </polygon>
+            </svg>
+            <span class="fab-tooltip">Bookmarks</span>
+        </button>
+        <button id="measure-btn" class="fab-btn" title="Measure Distance">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.54 15H17a2 2 0 0 0-2 2v4.54"></path>
+                <path d="M7 3.34V5a3 3 0 0 0 3 3v0a2 2 0 0 1 2 2v0c0 1.1.9 2 2 2v0a2 2 0 0 0 2-2v0c0-1.1.9-2 2-2h3.17">
+                </path>
+                <path d="M11 21.95V18a2 2 0 0 0-2-2v0a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05"></path>
+                <circle cx="12" cy="12" r="10"></circle>
+            </svg>
+            <span class="fab-tooltip">Measure Distance</span>
+        </button>
+        <button id="view3d-btn" class="fab-btn" title="Toggle 3D View"
+            style="background: linear-gradient(135deg, #f59e0b, #ef4444);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m8 3 4 8 5-5 5 15H2L8 3z"></path>
+            </svg>
+            <span class="fab-tooltip">3D Terrain View</span>
+        </button>
+
+    </div>
+
+    <!-- Compass Indicator (shows in 3D mode) -->
+    <div id="compass-indicator" class="compass-indicator">
+        <div id="compass-needle"
+            style="width:48px; height:48px; background:rgba(15,23,42,0.9); border-radius:50%; border:2px solid rgba(139,92,246,0.6); display:flex; align-items:center; justify-content:center; box-shadow:0 4px 15px rgba(0,0,0,0.3); transition: transform 0.3s;">
+            <span style="font-size:1.5rem; transform-origin:center;">🧭</span>
+        </div>
+        <div style="text-align:center; font-size:0.65rem; color:#94a3b8; margin-top:2px;">Tap to reset</div>
+    </div>
+
+    <!-- Bookmarks Panel -->
+    <div id="bookmarks-panel"
+        style="display:none; position:fixed; bottom:5rem; left:0.75rem; z-index:3000; background:rgba(15,23,42,0.98); border-radius:12px; border:1px solid rgba(139,92,246,0.4); box-shadow:0 4px 20px rgba(0,0,0,0.4); width:280px; max-height:300px; overflow:hidden;">
+        <div
+            style="padding:12px 16px; border-bottom:1px solid rgba(139,92,246,0.3); display:flex; justify-content:space-between; align-items:center;">
+            <span style="color:#e2e8f0; font-weight:600; font-size:0.9rem;">⭐ Saved Locations</span>
+            <button id="close-bookmarks"
+                style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:1.2rem;">×</button>
+        </div>
+        <div id="bookmarks-list" style="max-height:200px; overflow-y:auto; padding:8px;"></div>
+        <div style="padding:8px 12px; border-top:1px solid rgba(139,92,246,0.3);">
+            <button id="save-current-location"
+                style="width:100%; padding:10px; background:linear-gradient(135deg, #10b981, #059669); color:white; border:none; border-radius:8px; cursor:pointer; font-size:0.85rem; font-weight:500;">
+                ➕ Save Current Location
+            </button>
+        </div>
+    </div>
+    <div id="measure-result"
+        style="display:none; color: #e2e8f0; font-size: 0.9rem; text-align: center; background: rgba(15,23,42,0.9); padding: 12px; border-radius: 12px; border: 1px solid rgba(16,185,129,0.4); box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+        <div style="font-weight:600; margin-bottom:4px;">Distance</div>
+        <div style="font-size:1.2rem; margin-bottom:8px;"><span id="distance-value">0.00</span> <span
+                style="font-size:0.9rem; color:#94a3b8;">km</span></div>
+        <button id="clear-measure"
+            style="display:block; width:100%; padding: 6px; background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#e2e8f0; cursor:pointer; font-size:0.85rem; transition:background 0.2s;">Clear</button>
+    </div>
+
+    <div class="legend" id="legend">
+        <div class="legend-header" id="legend-toggle">
+            <h4>Hazard Zones</h4>
+            <button class="legend-toggle">▼</button>
+        </div>
+        <div class="legend-content">
+            <i style="background: #ec4899"></i> Recent Incidents<br>
+            <i style="background: #22c55e"></i> Past Incidents<br>
+            <i style="background: #f97316"></i> Satellite Detected Landslides<br>
+            <hr style="border: 0; border-top: 1px solid rgba(139, 92, 246, 0.3); margin: 5px 0;">
+            <i style="background: rgb(99, 0, 0)"></i> Landslide most likely to occur<br>
+            <i style="background: rgb(230, 0, 0)"></i> Landslides have been occurred in the Past<br>
+            <i style="background: rgb(254, 172, 0)"></i> Landslide are to be expected<br>
+            <i style="background: rgb(254, 244, 141)"></i> Modest level of landslide hazard exist<br>
+            <i style="background: rgb(165, 254, 164)"></i> Landslides not likely to occur<br>
+            <i style="background: rgb(128, 128, 128)"></i> Not mapped<br>
+            <i style="background: rgb(165, 0, 230)"></i> Subsidence & Rockfall<br>
+            <i style="background: rgb(115, 223, 255)"></i> Water Bodies<br>
+        </div>
+    </div>
+
+    <script src="maplibre-gl.js"></script>
+    <script src="pmtiles.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
