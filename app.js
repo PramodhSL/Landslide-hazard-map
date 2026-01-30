@@ -139,15 +139,28 @@ map.on('load', () => {
         maxzoom: 24 // Allow overzooming deeply
     });
 
-    updateProgress(60, 'Loading incident data...');
+    updateProgress(60, 'Loading inspection reports...');
 
     // 1:10k loaded on-demand (when zoomed in or toggled)
 
-    map.addSource('early_warning', {
+    // Inspection Reports Source
+    map.addSource('inspection_reports', {
         type: 'geojson',
-        data: 'early_warning.geojson',
-        tolerance: 10, // Increased tolerance to prevent WebGL "Max vertices" crash
+        data: 'inspection_reports.geojson',
+        tolerance: 10,
         buffer: 0
+    });
+
+    // Red Zones Source
+    map.addSource('red_zones', {
+        type: 'vector',
+        url: 'pmtiles://red_zones.pmtiles'
+    });
+
+    // Yellow Zones Source
+    map.addSource('yellow_zones', {
+        type: 'vector',
+        url: 'pmtiles://yellow_zones.pmtiles'
     });
 
     map.addSource('satellite_landslides', {
@@ -245,23 +258,52 @@ map.on('load', () => {
 
 
 
+
+    // Inspection Reports Layer
     map.addLayer({
-        'id': 'early_warning_points',
+        'id': 'inspection_points',
         'type': 'circle',
-        'source': 'early_warning',
+        'source': 'inspection_reports',
         'paint': {
             'circle-radius': 6,
-            'circle-color': [
-                'match',
-                ['get', 'status'],
-                'recent', '#ec4899', // Pink for recent
-                '#22c55e' // Green for old
-            ],
+            'circle-color': '#2563eb', // Blue
             'circle-stroke-width': 2,
             'circle-stroke-color': '#ffffff'
         },
         'layout': {
-            'visibility': 'visible'
+            'visibility': document.getElementById('layer-inspection').checked ? 'visible' : 'none'
+        }
+    });
+
+    // Red Zone Layer
+    map.addLayer({
+        'id': 'red_zones_fill',
+        'type': 'fill',
+        'source': 'red_zones',
+        'source-layer': 'red_zones',
+        'paint': {
+            'fill-color': '#dc2626', // Red
+            'fill-opacity': 0.4,
+            'fill-outline-color': '#991b1b'
+        },
+        'layout': {
+            'visibility': document.getElementById('layer-rz').checked ? 'visible' : 'none'
+        }
+    });
+
+    // Yellow Zone Layer
+    map.addLayer({
+        'id': 'yellow_zones_fill',
+        'type': 'fill',
+        'source': 'yellow_zones',
+        'source-layer': 'yellow_zones',
+        'paint': {
+            'fill-color': '#eab308', // Yellow
+            'fill-opacity': 0.4,
+            'fill-outline-color': '#a16207'
+        },
+        'layout': {
+            'visibility': document.getElementById('layer-yz').checked ? 'visible' : 'none'
         }
     });
 
@@ -296,14 +338,14 @@ map.on('load', () => {
     });
 
     map.on('click', 'hazard_50k_fill', showPopup);
-    map.on('click', 'early_warning_points', showPopup);
+    map.on('click', 'inspection_points', showPopup);
     map.on('click', 'satellite_points', showPopup);
     map.on('click', 'satellite_polygons', showPopup);
 
     map.on('mouseenter', 'hazard_50k_fill', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'hazard_50k_fill', () => map.getCanvas().style.cursor = '');
-    map.on('mouseenter', 'early_warning_points', () => map.getCanvas().style.cursor = 'pointer');
-    map.on('mouseleave', 'early_warning_points', () => map.getCanvas().style.cursor = '');
+    map.on('mouseenter', 'inspection_points', () => map.getCanvas().style.cursor = 'pointer');
+    map.on('mouseleave', 'inspection_points', () => map.getCanvas().style.cursor = '');
     map.on('mouseenter', 'satellite_points', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'satellite_points', () => map.getCanvas().style.cursor = '');
     map.on('mouseenter', 'satellite_polygons', () => map.getCanvas().style.cursor = 'pointer');
@@ -401,8 +443,18 @@ function updateMaxZoom() {
     }
 }
 
-document.getElementById('layer-warning').addEventListener('change', (e) => {
-    map.setLayoutProperty('early_warning_points', 'visibility', e.target.checked ? 'visible' : 'none');
+document.getElementById('layer-inspection').addEventListener('change', (e) => {
+    map.setLayoutProperty('inspection_points', 'visibility', e.target.checked ? 'visible' : 'none');
+});
+
+document.getElementById('layer-rz').addEventListener('change', (e) => {
+    const visibility = e.target.checked ? 'visible' : 'none';
+    if (map.getLayer('red_zones_fill')) map.setLayoutProperty('red_zones_fill', 'visibility', visibility);
+});
+
+document.getElementById('layer-yz').addEventListener('change', (e) => {
+    const visibility = e.target.checked ? 'visible' : 'none';
+    if (map.getLayer('yellow_zones_fill')) map.setLayoutProperty('yellow_zones_fill', 'visibility', visibility);
 });
 
 document.getElementById('layer-satellite-ls').addEventListener('change', (e) => {

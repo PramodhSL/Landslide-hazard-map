@@ -112,12 +112,41 @@
                         <input type="range" id="opacity-50k" min="0" max="100" value="60">
                     </div>
                     <div class="layer-toggle">
-                        <span class="layer-label">Reported Incidents</span>
+                        <span class="report-label" style="display:flex; align-items:center; gap:6px;">
+                            <span
+                                style="width:10px; height:10px; border-radius:50%; background:#2563eb; display:inline-block;"></span>
+                            Inspection Reports
+                        </span>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="layer-warning" checked>
+                            <input type="checkbox" id="layer-inspection" checked>
                             <span class="slider"></span>
                         </label>
                     </div>
+
+                    <div class="layer-toggle">
+                        <span class="layer-label" style="display:flex; align-items:center; gap:6px;">
+                            <span
+                                style="width:10px; height:10px; background:rgba(220, 38, 38, 0.6); border:1px solid #dc2626; display:inline-block;"></span>
+                            Red Zones (High Hazard)
+                        </span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="layer-rz">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="layer-toggle">
+                        <span class="layer-label" style="display:flex; align-items:center; gap:6px;">
+                            <span
+                                style="width:10px; height:10px; background:rgba(250, 204, 21, 0.6); border:1px solid #eab308; display:inline-block;"></span>
+                            Yellow Zones (Moderate)
+                        </span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="layer-yz">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
                     <div class="layer-toggle">
                         <span class="layer-label">Satellite Detected Landslides</span>
                         <label class="toggle-switch">
@@ -224,8 +253,21 @@
             <button class="legend-toggle">▼</button>
         </div>
         <div class="legend-content">
-            <i style="background: #ec4899"></i> Recent Incidents<br>
-            <i style="background: #22c55e"></i> Past Incidents<br>
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                <span
+                    style="width:10px; height:10px; border-radius:50%; background:#2563eb; display:inline-block;"></span>
+                Inspection Reports
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                <span
+                    style="width:10px; height:10px; background:rgba(220, 38, 38, 0.6); border:1px solid #dc2626; display:inline-block;"></span>
+                Red Zones (High Hazard)
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                <span
+                    style="width:10px; height:10px; background:rgba(250, 204, 21, 0.6); border:1px solid #eab308; display:inline-block;"></span>
+                Yellow Zones (Moderate)
+            </div>
             <i style="background: #f97316"></i> Satellite Detected Landslides<br>
             <hr style="border: 0; border-top: 1px solid rgba(139, 92, 246, 0.3); margin: 5px 0;">
             <i style="background: rgb(99, 0, 0)"></i> Landslide most likely to occur<br>
