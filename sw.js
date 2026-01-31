@@ -1,4 +1,4 @@
-const CACHE_NAME = 'landslide-map-v23';
+const CACHE_NAME = 'landslide-map-v24';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -43,7 +43,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     // Skip PMTiles files (allow range requests)
     // Simple string check is safer than checking headers which might be missing/opaque
-    if (event.request.url.indexOf('.pmtiles') !== -1) {
+    // Skip PMTiles and Cloudflare R2 files (allow range requests & CORS to work naturally)
+    if (event.request.url.indexOf('.pmtiles') !== -1 || event.request.url.indexOf('r2.dev') !== -1) {
         return;
     }
 
