@@ -143,24 +143,24 @@ map.on('load', () => {
 
     // 1:10k loaded on-demand (when zoomed in or toggled)
 
-    // Inspection Reports Source
+    // Inspection Reports Source (Cloudflare)
     map.addSource('inspection_reports', {
         type: 'geojson',
-        data: 'inspection_reports.geojson',
+        data: 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/inspection_reports.geojson',
         tolerance: 10,
         buffer: 0
     });
 
-    // Red Zones Source
+    // Red Zones Source (Cloudflare)
     map.addSource('red_zones', {
         type: 'vector',
-        url: 'pmtiles://red_zones.pmtiles'
+        url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/red_zones.pmtiles'
     });
 
-    // Yellow Zones Source
+    // Yellow Zones Source (Cloudflare)
     map.addSource('yellow_zones', {
         type: 'vector',
-        url: 'pmtiles://yellow_zones.pmtiles'
+        url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/yellow_zones.pmtiles'
     });
 
     map.addSource('satellite_landslides', {
