@@ -139,36 +139,18 @@ map.on('load', () => {
         maxzoom: 24 // Allow overzooming deeply
     });
 
-    updateProgress(60, 'Loading inspection reports...');
+    updateProgress(60, 'Initializing layer system...');
 
-    // 1:10k loaded on-demand (when zoomed in or toggled)
+    // --- Z-INDEX SPACER LAYERS ---
+    // These invisible layers act as "shelves" to ensure correct order regardless of load time.
+    map.addLayer({ id: 'z-index-1-base', type: 'background', layout: { visibility: 'none' } });
+    map.addLayer({ id: 'z-index-2-hazards_50k', type: 'background', layout: { visibility: 'none' } });
+    map.addLayer({ id: 'z-index-3-hazards_10k', type: 'background', layout: { visibility: 'none' } });
+    map.addLayer({ id: 'z-index-4-zones', type: 'background', layout: { visibility: 'none' } }); // Red/Yellow
+    map.addLayer({ id: 'z-index-5-overlays', type: 'background', layout: { visibility: 'none' } }); // Contours, Satellite
+    map.addLayer({ id: 'z-index-6-top', type: 'background', layout: { visibility: 'none' } }); // Inspection
 
-    // Inspection Reports Source (Cloudflare)
-    map.addSource('inspection_reports', {
-        type: 'geojson',
-        data: 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/inspection_reports.geojson',
-        tolerance: 10,
-        buffer: 0
-    });
-
-    // Red Zones Source (Cloudflare)
-    map.addSource('red_zones', {
-        type: 'vector',
-        url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/red_zones.pmtiles'
-    });
-
-    // Yellow Zones Source (Cloudflare)
-    map.addSource('yellow_zones', {
-        type: 'vector',
-        url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/yellow_zones.pmtiles'
-    });
-
-    map.addSource('satellite_landslides', {
-        type: 'vector',
-        url: 'pmtiles://satellite_landslides.pmtiles', // Hosted on GitHub Pages (relative path)
-        attribution: 'Human Settlement & Planning Division'
-    });
-
+    // Load 50k immediately (Core Map)
     map.addLayer({
         'id': 'hazard_50k_fill',
         'type': 'fill',
@@ -176,10 +158,10 @@ map.on('load', () => {
         'source-layer': 'hazard_50k',
         'paint': {
             'fill-color': hazardColorMatch,
-            'fill-opacity': 0.6, // Reduced opacity to let hillshade show through
-            'fill-outline-color': 'rgba(0,0,0,0.1)' // Softer outline
+            'fill-opacity': 0.6,
+            'fill-outline-color': 'rgba(0,0,0,0.1)'
         }
-    });
+    }, 'z-index-2-hazards_50k'); // Put BEFORE the spacer
 
     // 1:10k layer - lazy loaded (saves bandwidth on mobile)
     window.hazard10kLoaded = false;
@@ -209,7 +191,7 @@ map.on('load', () => {
                 'layout': {
                     'visibility': document.getElementById('layer-10k').checked ? 'visible' : 'none'
                 }
-            });
+            }, 'z-index-3-hazards_10k'); // Place in 10k shelf
 
             map.on('click', 'hazard_10k_fill', showPopup);
             map.on('mouseenter', 'hazard_10k_fill', () => map.getCanvas().style.cursor = 'pointer');
@@ -224,88 +206,109 @@ map.on('load', () => {
         }
     });
 
-    // Contour Layer Source
-    map.addSource('contours', {
+    // --- LAZY LOADERS ---
+
+    // 1. INSPECTION REPORTS
+    window.inspectionLoaded = false;
+    window.loadInspection = function () {
+        if (window.inspectionLoaded) return;
+        window.inspectionLoaded = true;
+
+        map.addSource('inspection_reports', {
+            type: 'geojson',
+            data: 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/inspection_reports.geojson',
+            tolerance: 10, buffer: 0
+        });
+
+        map.addLayer({
+            'id': 'inspection_points',
+            'type': 'circle',
+            'source': 'inspection_reports',
+            'paint': {
+                'circle-radius': 6, 'circle-color': '#2563eb', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff'
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-6-top'); // Top shelf
+
+        // Re-bind events
+        map.on('click', 'inspection_points', showPopup);
+        map.on('mouseenter', 'inspection_points', () => map.getCanvas().style.cursor = 'pointer');
+        map.on('mouseleave', 'inspection_points', () => map.getCanvas().style.cursor = '');
+    };
+
+    // 2. RED ZONES
+    window.redZonesLoaded = false;
+    window.loadRedZones = function () {
+        if (window.redZonesLoaded) return;
+        window.redZonesLoaded = true;
+
+        map.addSource('red_zones', {
+            type: 'vector',
+            url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/red_zones.pmtiles'
+        });
+
+        map.addLayer({
+            'id': 'red_zones_fill',
+            'type': 'fill', 'source': 'red_zones', 'source-layer': 'red_zones',
+            'paint': {
+                'fill-color': '#dc2626', 'fill-opacity': 0.4, 'fill-outline-color': '#991b1b'
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-4-zones'); // Zones shelf
+    };
+
+    // 3. YELLOW ZONES
+    window.yellowZonesLoaded = false;
+    window.loadYellowZones = function () {
+        if (window.yellowZonesLoaded) return;
+        window.yellowZonesLoaded = true;
+
+        map.addSource('yellow_zones', {
+            type: 'vector',
+            url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/yellow_zones.pmtiles'
+        });
+
+        map.addLayer({
+            'id': 'yellow_zones_fill',
+            'type': 'fill', 'source': 'yellow_zones', 'source-layer': 'yellow_zones',
+            'paint': {
+                'fill-color': '#eab308', 'fill-opacity': 0.4, 'fill-outline-color': '#a16207'
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-4-zones'); // Zones shelf
+    };
+
+    // 4. CONTOURS & SATELLITE (Grouped logic where appropriate)
+    map.addSource('satellite_landslides', {
         type: 'vector',
-        url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/Contour_20M.pmtiles',
-        attribution: 'NBRO'
+        url: 'pmtiles://satellite_landslides.pmtiles',
+        attribution: 'Human Settlement & Planning Division'
     });
+    // Satellite layers can stay here as they are small, or moved. Getting to complex to move everything.
+    // Let's stick to the requested ones: Reports, Red, Yellow. Contours also requested.
 
-    // Contour Layer Style
-    map.addLayer({
-        'id': 'contours_line',
-        'type': 'line',
-        'source': 'contours',
-        'source-layer': 'Contour_20M',
-        'paint': {
-            'line-color': '#57534e', // Stone-600
-            'line-width': 1,
-            'line-opacity': 0.6
-        },
-        'layout': {
-            'visibility': document.getElementById('layer-contours').checked ? 'visible' : 'none'
-        }
-    });
+    // Contours Lazy
+    window.contoursLoaded = false;
+    window.loadContours = function () {
+        if (window.contoursLoaded) return;
+        window.contoursLoaded = true;
 
-    // Toggle logic for contours
-    document.getElementById('layer-contours').addEventListener('change', (e) => {
-        const visibility = e.target.checked ? 'visible' : 'none';
-        if (map.getLayer('contours_line')) {
-            map.setLayoutProperty('contours_line', 'visibility', visibility);
-        }
-    });
+        // Check if source exists (satellite might share it? no)
+        map.addSource('contours', {
+            type: 'vector',
+            url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/Contour_20M.pmtiles',
+            attribution: 'NBRO'
+        });
 
-
-
-
-
-    // Inspection Reports Layer
-    map.addLayer({
-        'id': 'inspection_points',
-        'type': 'circle',
-        'source': 'inspection_reports',
-        'paint': {
-            'circle-radius': 6,
-            'circle-color': '#2563eb', // Blue
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#ffffff'
-        },
-        'layout': {
-            'visibility': document.getElementById('layer-inspection').checked ? 'visible' : 'none'
-        }
-    });
-
-    // Red Zone Layer
-    map.addLayer({
-        'id': 'red_zones_fill',
-        'type': 'fill',
-        'source': 'red_zones',
-        'source-layer': 'red_zones',
-        'paint': {
-            'fill-color': '#dc2626', // Red
-            'fill-opacity': 0.4,
-            'fill-outline-color': '#991b1b'
-        },
-        'layout': {
-            'visibility': document.getElementById('layer-rz').checked ? 'visible' : 'none'
-        }
-    });
-
-    // Yellow Zone Layer
-    map.addLayer({
-        'id': 'yellow_zones_fill',
-        'type': 'fill',
-        'source': 'yellow_zones',
-        'source-layer': 'yellow_zones',
-        'paint': {
-            'fill-color': '#eab308', // Yellow
-            'fill-opacity': 0.4,
-            'fill-outline-color': '#a16207'
-        },
-        'layout': {
-            'visibility': document.getElementById('layer-yz').checked ? 'visible' : 'none'
-        }
-    });
+        map.addLayer({
+            'id': 'contours_line',
+            'type': 'line', 'source': 'contours', 'source-layer': 'Contour_20M',
+            'paint': {
+                'line-color': '#57534e', 'line-width': 1, 'line-opacity': 0.6
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-5-overlays');
+    };
 
     // Satellite Landslides (Polygons)
     map.addLayer({
@@ -443,18 +446,26 @@ function updateMaxZoom() {
     }
 }
 
+// Update configuration toggles to use lazy loaders
+
+document.getElementById('layer-contours').addEventListener('change', (e) => {
+    if (e.target.checked && !window.contoursLoaded) window.loadContours();
+    if (map.getLayer('contours_line')) map.setLayoutProperty('contours_line', 'visibility', e.target.checked ? 'visible' : 'none');
+});
+
 document.getElementById('layer-inspection').addEventListener('change', (e) => {
-    map.setLayoutProperty('inspection_points', 'visibility', e.target.checked ? 'visible' : 'none');
+    if (e.target.checked && !window.inspectionLoaded) window.loadInspection();
+    if (map.getLayer('inspection_points')) map.setLayoutProperty('inspection_points', 'visibility', e.target.checked ? 'visible' : 'none');
 });
 
 document.getElementById('layer-rz').addEventListener('change', (e) => {
-    const visibility = e.target.checked ? 'visible' : 'none';
-    if (map.getLayer('red_zones_fill')) map.setLayoutProperty('red_zones_fill', 'visibility', visibility);
+    if (e.target.checked && !window.redZonesLoaded) window.loadRedZones();
+    if (map.getLayer('red_zones_fill')) map.setLayoutProperty('red_zones_fill', 'visibility', e.target.checked ? 'visible' : 'none');
 });
 
 document.getElementById('layer-yz').addEventListener('change', (e) => {
-    const visibility = e.target.checked ? 'visible' : 'none';
-    if (map.getLayer('yellow_zones_fill')) map.setLayoutProperty('yellow_zones_fill', 'visibility', visibility);
+    if (e.target.checked && !window.yellowZonesLoaded) window.loadYellowZones();
+    if (map.getLayer('yellow_zones_fill')) map.setLayoutProperty('yellow_zones_fill', 'visibility', e.target.checked ? 'visible' : 'none');
 });
 
 document.getElementById('layer-satellite-ls').addEventListener('change', (e) => {
