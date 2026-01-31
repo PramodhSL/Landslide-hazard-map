@@ -1,4 +1,4 @@
-const CACHE_NAME = 'landslide-map-v22';
+const CACHE_NAME = 'landslide-map-v23';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -9,8 +9,7 @@ const ASSETS_TO_CACHE = [
     './icon-512.png',
     './maplibre-gl.css',
     './maplibre-gl.js',
-    './pmtiles.js',
-    './early_warning.geojson'
+    './pmtiles.js'
 ];
 
 // Install Event: Cache core assets
