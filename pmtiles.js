@@ -136,7 +136,7 @@ var pmtiles = (() => {
     0
   ]);
   var clim = new u8([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
-  var freb = function(eb, start) {
+  var freb = function (eb, start) {
     var b = new u16(31);
     for (var i = 0; i < 31; ++i) {
       b[i] = start += 1 << eb[i - 1];
@@ -165,7 +165,7 @@ var pmtiles = (() => {
   }
   var x;
   var i;
-  var hMap = function(cd, mb, r) {
+  var hMap = function (cd, mb, r) {
     var s = cd.length;
     var i = 0;
     var l = new u16(mb);
@@ -220,7 +220,7 @@ var pmtiles = (() => {
   var i;
   var flrm = /* @__PURE__ */ hMap(flt, 9, 1);
   var fdrm = /* @__PURE__ */ hMap(fdt, 5, 1);
-  var max = function(a) {
+  var max = function (a) {
     var m = a[0];
     for (var i = 1; i < a.length; ++i) {
       if (a[i] > m)
@@ -228,18 +228,18 @@ var pmtiles = (() => {
     }
     return m;
   };
-  var bits = function(d, p, m) {
+  var bits = function (d, p, m) {
     var o = p / 8 | 0;
     return (d[o] | d[o + 1] << 8) >> (p & 7) & m;
   };
-  var bits16 = function(d, p) {
+  var bits16 = function (d, p) {
     var o = p / 8 | 0;
     return (d[o] | d[o + 1] << 8 | d[o + 2] << 16) >> (p & 7);
   };
-  var shft = function(p) {
+  var shft = function (p) {
     return (p + 7) / 8 | 0;
   };
-  var slc = function(v, s, e) {
+  var slc = function (v, s, e) {
     if (s == null || s < 0)
       s = 0;
     if (e == null || e > v.length)
@@ -265,7 +265,7 @@ var pmtiles = (() => {
     "invalid zip data"
     // determined by unknown compression method
   ];
-  var err = function(ind, msg, nt) {
+  var err = function (ind, msg, nt) {
     var e = new Error(msg || ec[ind]);
     e.code = ind;
     if (Error.captureStackTrace)
@@ -274,7 +274,7 @@ var pmtiles = (() => {
       throw e;
     return e;
   };
-  var inflt = function(dat, st, buf, dict) {
+  var inflt = function (dat, st, buf, dict) {
     var sl = dat.length, dl = dict ? dict.length : 0;
     if (!sl || st.f && !st.l)
       return buf || new u8(0);
@@ -282,7 +282,7 @@ var pmtiles = (() => {
     var noSt = st.i;
     if (!buf)
       buf = new u8(sl * 3);
-    var cbuf = function(l2) {
+    var cbuf = function (l2) {
       var bl = buf.length;
       if (l2 > bl) {
         var nbuf = new u8(Math.max(bl * 2, l2));
@@ -323,7 +323,7 @@ var pmtiles = (() => {
           pos += hcLen * 3;
           var clb = max(clt), clbmsk = (1 << clb) - 1;
           var clm = hMap(clt, clb, 1);
-          for (var i = 0; i < tl; ) {
+          for (var i = 0; i < tl;) {
             var r = clm[bits(dat, pos, clbmsk)];
             pos += r & 15;
             var s = r >> 4;
@@ -420,7 +420,7 @@ var pmtiles = (() => {
     return bt == buf.length ? buf : slc(buf, 0, bt);
   };
   var et = /* @__PURE__ */ new u8(0);
-  var gzs = function(d) {
+  var gzs = function (d) {
     if (d[0] != 31 || d[1] != 139 || d[2] != 8)
       err(6, "invalid gzip data");
     var flg = d[3];
@@ -431,11 +431,11 @@ var pmtiles = (() => {
       ;
     return st + (flg & 2);
   };
-  var gzl = function(d) {
+  var gzl = function (d) {
     var l = d.length;
     return (d[l - 4] | d[l - 3] << 8 | d[l - 2] << 16 | d[l - 1] << 24) >>> 0;
   };
-  var zls = function(d, dict) {
+  var zls = function (d, dict) {
     if ((d[0] & 15) != 8 || d[0] >> 4 > 7 || (d[0] << 8 | d[1]) % 31)
       err(6, "invalid zlib data");
     if ((d[1] >> 5 & 1) == +!dict)
@@ -796,7 +796,7 @@ var pmtiles = (() => {
         });
         return el;
       },
-      _removeTile: function(key) {
+      _removeTile: function (key) {
         const tile = this._tiles[key];
         if (!tile) {
           return;
@@ -1153,7 +1153,7 @@ var pmtiles = (() => {
         }
         let resp = yield fetch(this.url, {
           signal,
-          cache,
+          // cache, // Removed to prevent ERR_CACHE_OPERATION_NOT_SUPPORTED
           headers: requestHeaders
           //biome-ignore lint: "cache" is incompatible between cloudflare workers and browser
         });

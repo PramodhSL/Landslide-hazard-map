@@ -272,7 +272,7 @@ map.on('load', () => {
             'id': 'yellow_zones_fill',
             'type': 'fill', 'source': 'yellow_zones', 'source-layer': 'yellow_zones',
             'paint': {
-                'fill-color': '#eab308', 'fill-opacity': 0.4, 'fill-outline-color': '#a16207'
+                'fill-color': '#FFFF00', 'fill-opacity': 0.4, 'fill-outline-color': '#EAB308'
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-4-zones'); // Zones shelf
