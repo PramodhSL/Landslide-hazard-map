@@ -528,7 +528,7 @@
 
         .legend {
             position: fixed;
-            top: 1rem;
+            top: 4.5rem; /* Moved down to avoid overlap with Map Controls */
             right: 1rem;
             bottom: auto;
             max-width: 300px;
