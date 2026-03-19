@@ -257,6 +257,46 @@ map.on('load', () => {
         }, 'z-index-4-zones'); // Zones shelf
     };
 
+    // ARG Rain Gauges & Thiessen Polygons
+    window.argLayersLoaded = false;
+    window.loadARGLayers = function () {
+        if (window.argLayersLoaded) return;
+        window.argLayersLoaded = true;
+
+        // Thiessen Polygons Source & Layer
+        map.addSource('arg_thiessen', {
+            type: 'geojson',
+            data: 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/arg_thiessen.geojson'
+        });
+        map.addLayer({
+            'id': 'arg_thiessen_fill',
+            'type': 'fill', 'source': 'arg_thiessen',
+            'paint': {
+                'fill-color': '#0ea5e9', // Blue
+                'fill-opacity': 0.2, 
+                'fill-outline-color': '#0284c7'
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-4-zones'); 
+
+        // Point Locations Source & Layer
+        map.addSource('arg_locations', {
+            type: 'geojson',
+            data: 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/arg_locations.geojson'
+        });
+        map.addLayer({
+            'id': 'arg_locations_points',
+            'type': 'circle', 'source': 'arg_locations',
+            'paint': {
+                'circle-radius': 6,
+                'circle-color': '#0ea5e9',
+                'circle-stroke-width': 2,
+                'circle-stroke-color': '#ffffff'
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-5-inspections');
+    };
+
     // 3. YELLOW ZONES
     window.yellowZonesLoaded = false;
     window.loadYellowZones = function () {
@@ -342,6 +382,8 @@ map.on('load', () => {
 
     map.on('click', 'hazard_50k_fill', showPopup);
     map.on('click', 'inspection_points', showPopup);
+    map.on('click', 'arg_locations_points', showPopup);
+    map.on('click', 'arg_thiessen_fill', showPopup);
     map.on('click', 'satellite_points', showPopup);
     map.on('click', 'satellite_polygons', showPopup);
 
@@ -349,6 +391,10 @@ map.on('load', () => {
     map.on('mouseleave', 'hazard_50k_fill', () => map.getCanvas().style.cursor = '');
     map.on('mouseenter', 'inspection_points', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'inspection_points', () => map.getCanvas().style.cursor = '');
+    map.on('mouseenter', 'arg_locations_points', () => map.getCanvas().style.cursor = 'pointer');
+    map.on('mouseleave', 'arg_locations_points', () => map.getCanvas().style.cursor = '');
+    map.on('mouseenter', 'arg_thiessen_fill', () => map.getCanvas().style.cursor = 'pointer');
+    map.on('mouseleave', 'arg_thiessen_fill', () => map.getCanvas().style.cursor = '');
     map.on('mouseenter', 'satellite_points', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'satellite_points', () => map.getCanvas().style.cursor = '');
     map.on('mouseenter', 'satellite_polygons', () => map.getCanvas().style.cursor = 'pointer');
@@ -466,6 +512,16 @@ document.getElementById('layer-rz').addEventListener('change', (e) => {
 document.getElementById('layer-yz').addEventListener('change', (e) => {
     if (e.target.checked && !window.yellowZonesLoaded) window.loadYellowZones();
     if (map.getLayer('yellow_zones_fill')) map.setLayoutProperty('yellow_zones_fill', 'visibility', e.target.checked ? 'visible' : 'none');
+});
+
+document.getElementById('layer-arg-locations').addEventListener('change', (e) => {
+    if (e.target.checked && !window.argLayersLoaded) window.loadARGLayers();
+    if (map.getLayer('arg_locations_points')) map.setLayoutProperty('arg_locations_points', 'visibility', e.target.checked ? 'visible' : 'none');
+});
+
+document.getElementById('layer-arg-thiessen').addEventListener('change', (e) => {
+    if (e.target.checked && !window.argLayersLoaded) window.loadARGLayers();
+    if (map.getLayer('arg_thiessen_fill')) map.setLayoutProperty('arg_thiessen_fill', 'visibility', e.target.checked ? 'visible' : 'none');
 });
 
 document.getElementById('layer-satellite-ls').addEventListener('change', (e) => {
