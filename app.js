@@ -294,7 +294,7 @@ map.on('load', () => {
                 'circle-stroke-color': '#ffffff'
             },
             'layout': { 'visibility': 'visible' }
-        }, 'z-index-5-inspections');
+        }, 'z-index-6-top');
     };
 
     // 3. YELLOW ZONES
