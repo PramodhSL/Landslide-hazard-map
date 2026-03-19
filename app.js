@@ -272,28 +272,40 @@ map.on('load', () => {
             'id': 'arg_thiessen_fill',
             'type': 'fill', 'source': 'arg_thiessen',
             'paint': {
-                'fill-color': '#0ea5e9', // Blue
-                'fill-opacity': 0.2, 
-                'fill-outline-color': '#0284c7'
+                'fill-color': ['get', '_color'], // Distinct color per polygon
+                'fill-opacity': 0.35, 
+                'fill-outline-color': '#1e293b'
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-4-zones'); 
 
-        // Point Locations Source & Layer
+        // Create a square icon for rain gauges (distinct from Inspection circles)
+        const sqSize = 14;
+        const sqCanvas = document.createElement('canvas');
+        sqCanvas.width = sqSize;
+        sqCanvas.height = sqSize;
+        const sqCtx = sqCanvas.getContext('2d');
+        sqCtx.fillStyle = '#1e293b'; // Dark/black fill
+        sqCtx.fillRect(0, 0, sqSize, sqSize);
+        sqCtx.strokeStyle = '#ffffff'; // White border
+        sqCtx.lineWidth = 2;
+        sqCtx.strokeRect(1, 1, sqSize - 2, sqSize - 2);
+        map.addImage('square-marker', sqCanvas, { pixelRatio: 1 });
+
+        // Point Locations Source & Layer (Symbol with square icon)
         map.addSource('arg_locations', {
             type: 'geojson',
             data: 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/arg_locations.geojson'
         });
         map.addLayer({
             'id': 'arg_locations_points',
-            'type': 'circle', 'source': 'arg_locations',
-            'paint': {
-                'circle-radius': 6,
-                'circle-color': '#0ea5e9',
-                'circle-stroke-width': 2,
-                'circle-stroke-color': '#ffffff'
-            },
-            'layout': { 'visibility': 'visible' }
+            'type': 'symbol', 'source': 'arg_locations',
+            'layout': {
+                'icon-image': 'square-marker',
+                'icon-size': 1,
+                'icon-allow-overlap': true,
+                'visibility': 'visible'
+            }
         }, 'z-index-6-top');
     };
 
@@ -383,7 +395,6 @@ map.on('load', () => {
     map.on('click', 'hazard_50k_fill', showPopup);
     map.on('click', 'inspection_points', showPopup);
     map.on('click', 'arg_locations_points', showPopup);
-    map.on('click', 'arg_thiessen_fill', showPopup);
     map.on('click', 'satellite_points', showPopup);
     map.on('click', 'satellite_polygons', showPopup);
 
@@ -393,8 +404,6 @@ map.on('load', () => {
     map.on('mouseleave', 'inspection_points', () => map.getCanvas().style.cursor = '');
     map.on('mouseenter', 'arg_locations_points', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'arg_locations_points', () => map.getCanvas().style.cursor = '');
-    map.on('mouseenter', 'arg_thiessen_fill', () => map.getCanvas().style.cursor = 'pointer');
-    map.on('mouseleave', 'arg_thiessen_fill', () => map.getCanvas().style.cursor = '');
     map.on('mouseenter', 'satellite_points', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'satellite_points', () => map.getCanvas().style.cursor = '');
     map.on('mouseenter', 'satellite_polygons', () => map.getCanvas().style.cursor = 'pointer');
