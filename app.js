@@ -290,7 +290,8 @@ map.on('load', () => {
         sqCtx.strokeStyle = '#ffffff'; // White border
         sqCtx.lineWidth = 2;
         sqCtx.strokeRect(1, 1, sqSize - 2, sqSize - 2);
-        map.addImage('square-marker', sqCanvas, { pixelRatio: 1 });
+        const sqImgData = sqCtx.getImageData(0, 0, sqSize, sqSize);
+        map.addImage('square-marker', { width: sqSize, height: sqSize, data: new Uint8Array(sqImgData.data.buffer) });
 
         // Point Locations Source & Layer (Symbol with square icon)
         map.addSource('arg_locations', {
