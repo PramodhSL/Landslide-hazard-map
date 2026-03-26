@@ -114,7 +114,7 @@
                     <div class="layer-toggle">
                         <span class="layer-label" style="display:flex; align-items:center; gap:6px;">
                             <span
-                                style="width:10px; height:10px; border-radius:50%; background:#2563eb; display:inline-block;"></span>
+                                style="width:10px; height:10px; border-radius:50%; background:linear-gradient(to right, #ef4444 33%, #eab308 33%, #eab308 66%, #22c55e 66%); display:inline-block;"></span>
                             Inspection Reports
                         </span>
                         <label class="toggle-switch">
@@ -275,41 +275,72 @@
             <button class="legend-toggle">▼</button>
         </div>
         <div class="legend-content">
-            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                <span
-                    style="width:10px; height:10px; border-radius:50%; background:#2563eb; display:inline-block;"></span>
-                Inspection Reports
+            <div id="legend-section-hazard">
+                <div class="legend-section-title" style="font-weight: 600; margin-bottom: 5px; font-size: 0.85rem; color: #a78bfa;">Hazard Levels & Zones</div>
+                
+                <div id="leg-item-rz" style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span style="width:10px; height:10px; background:rgba(220, 38, 38, 0.6); border:1px solid #dc2626; display:inline-block;"></span>
+                    Red Zones (High Hazard)
+                </div>
+                
+                <div id="leg-item-yz" style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span style="width:10px; height:10px; background:rgba(250, 204, 21, 0.6); border:1px solid #eab308; display:inline-block;"></span>
+                    Yellow Zones (Moderate)
+                </div>
+                
+                <div id="leg-item-base-hazard">
+                    <i style="background: rgb(99, 0, 0)"></i> Landslide most likely to occur<br>
+                    <i style="background: rgb(230, 0, 0)"></i> Landslides have been occurred in the Past<br>
+                    <i style="background: rgb(254, 172, 0)"></i> Landslide are to be expected<br>
+                    <i style="background: rgb(254, 244, 141)"></i> Modest level of landslide hazard exist<br>
+                    <i style="background: rgb(165, 254, 164)"></i> Landslides not likely to occur<br>
+                    <i style="background: rgb(128, 128, 128)"></i> Not mapped<br>
+                    <i style="background: rgb(165, 0, 230)"></i> Subsidence & Rockfall<br>
+                    <i style="background: rgb(115, 223, 255)"></i> Water Bodies<br>
+                </div>
             </div>
-            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                <span
-                    style="width:10px; height:10px; background:#1e293b; border:1px solid #fff; display:inline-block;"></span>
-                ARG Rain Gauges
+
+            <hr id="legend-divider-1" style="border: 0; border-top: 1px solid rgba(139, 92, 246, 0.3); margin: 8px 0;">
+
+            <div id="legend-section-context">
+                <div class="legend-section-title" style="font-weight: 600; margin-bottom: 5px; font-size: 0.85rem; color: #a78bfa;">Additional Context</div>
+                
+                <div id="leg-item-arg" style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span style="width:10px; height:10px; background:#1e293b; border:1px solid #fff; display:inline-block;"></span>
+                    ARG Rain Gauges
+                </div>
+                
+                <div id="leg-item-thiessen" style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span style="width:10px; height:10px; background:rgba(14, 165, 233, 0.4); border:1px solid #0284c7; display:inline-block;"></span>
+                    Thiessen Polygons
+                </div>
+                
+                <div id="leg-item-satellite">
+                    <i style="background: #f97316"></i> Satellite Detected Landslides<br>
+                </div>
             </div>
-            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                <span
-                    style="width:10px; height:10px; background:rgba(14, 165, 233, 0.4); border:1px solid #0284c7; display:inline-block;"></span>
-                Thiessen Polygons
+
+            <hr id="legend-divider-2" style="border: 0; border-top: 1px solid rgba(139, 92, 246, 0.3); margin: 8px 0;">
+
+            <div id="legend-section-inspection">
+                <div class="legend-section-title" style="font-weight: 600; margin-bottom: 5px; font-size: 0.85rem; color: #a78bfa;">Inspection Reports</div>
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span style="width:10px; height:10px; border-radius:50%; background:#ef4444; border:1px solid #fff; display:inline-block;"></span>
+                    High Risk
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span style="width:10px; height:10px; border-radius:50%; background:#eab308; border:1px solid #fff; display:inline-block;"></span>
+                    Medium Risk
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span style="width:10px; height:10px; border-radius:50%; background:#22c55e; border:1px solid #fff; display:inline-block;"></span>
+                    Low Risk
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span style="width:10px; height:10px; border-radius:50%; background:#2563eb; border:1px solid #fff; display:inline-block;"></span>
+                    Other
+                </div>
             </div>
-            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                <span
-                    style="width:10px; height:10px; background:rgba(220, 38, 38, 0.6); border:1px solid #dc2626; display:inline-block;"></span>
-                Red Zones (High Hazard)
-            </div>
-            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                <span
-                    style="width:10px; height:10px; background:rgba(250, 204, 21, 0.6); border:1px solid #eab308; display:inline-block;"></span>
-                Yellow Zones (Moderate)
-            </div>
-            <i style="background: #f97316"></i> Satellite Detected Landslides<br>
-            <hr style="border: 0; border-top: 1px solid rgba(139, 92, 246, 0.3); margin: 5px 0;">
-            <i style="background: rgb(99, 0, 0)"></i> Landslide most likely to occur<br>
-            <i style="background: rgb(230, 0, 0)"></i> Landslides have been occurred in the Past<br>
-            <i style="background: rgb(254, 172, 0)"></i> Landslide are to be expected<br>
-            <i style="background: rgb(254, 244, 141)"></i> Modest level of landslide hazard exist<br>
-            <i style="background: rgb(165, 254, 164)"></i> Landslides not likely to occur<br>
-            <i style="background: rgb(128, 128, 128)"></i> Not mapped<br>
-            <i style="background: rgb(165, 0, 230)"></i> Subsidence & Rockfall<br>
-            <i style="background: rgb(115, 223, 255)"></i> Water Bodies<br>
         </div>
     </div>
 

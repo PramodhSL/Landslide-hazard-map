@@ -225,7 +225,25 @@ map.on('load', () => {
             'type': 'circle',
             'source': 'inspection_reports',
             'paint': {
-                'circle-radius': 6, 'circle-color': '#2563eb', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff'
+                'circle-radius': 6, 
+                'circle-color': [
+                    'case',
+                    ['in', 'HR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#ef4444',
+                    ['in', 'P1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#ef4444',
+                    ['in', 'P2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#ef4444',
+                    ['in', 'P3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#ef4444',
+                    ['in', 'MR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#eab308',
+                    ['in', 'LR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#22c55e',
+                    ['in', 'HR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#ef4444',
+                    ['in', 'HIGH', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#ef4444',
+                    ['in', 'MR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#eab308',
+                    ['in', 'MEDIUM', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#eab308',
+                    ['in', 'LR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#22c55e',
+                    ['in', 'LOW', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#22c55e',
+                    '#2563eb'
+                ],
+                'circle-stroke-width': 2, 
+                'circle-stroke-color': '#ffffff'
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-6-top'); // Top shelf
@@ -1385,3 +1403,71 @@ if ('serviceWorker' in navigator) {
     });
 }
 
+
+// =============================================
+// DYNAMIC LEGEND FUNCTIONALITY
+// =============================================
+function updateLegend() {
+    // Hazard Group
+    const show10k = document.getElementById('layer-10k') ? document.getElementById('layer-10k').checked : false;
+    const show50k = document.getElementById('layer-50k') ? document.getElementById('layer-50k').checked : false;
+    const showBaseHazard = show10k || show50k;
+    const showRz = document.getElementById('layer-rz') ? document.getElementById('layer-rz').checked : false;
+    const showYz = document.getElementById('layer-yz') ? document.getElementById('layer-yz').checked : false;
+    const showHazardGroup = showBaseHazard || showRz || showYz;
+    
+    const hazSec = document.getElementById('legend-section-hazard');
+    if (hazSec) hazSec.style.display = showHazardGroup ? 'block' : 'none';
+    if (document.getElementById('leg-item-base-hazard')) document.getElementById('leg-item-base-hazard').style.display = showBaseHazard ? 'block' : 'none';
+    if (document.getElementById('leg-item-rz')) document.getElementById('leg-item-rz').style.display = showRz ? 'flex' : 'none';
+    if (document.getElementById('leg-item-yz')) document.getElementById('leg-item-yz').style.display = showYz ? 'flex' : 'none';
+
+    // Context Group
+    const showArg = document.getElementById('layer-arg-locations') ? document.getElementById('layer-arg-locations').checked : false;
+    const showThiessen = document.getElementById('layer-arg-thiessen') ? document.getElementById('layer-arg-thiessen').checked : false;
+    const showSat = document.getElementById('layer-satellite-ls') ? document.getElementById('layer-satellite-ls').checked : false;
+    const showContextGroup = showArg || showThiessen || showSat;
+    
+    const ctxSec = document.getElementById('legend-section-context');
+    if (ctxSec) ctxSec.style.display = showContextGroup ? 'block' : 'none';
+    if (document.getElementById('leg-item-arg')) document.getElementById('leg-item-arg').style.display = showArg ? 'flex' : 'none';
+    if (document.getElementById('leg-item-thiessen')) document.getElementById('leg-item-thiessen').style.display = showThiessen ? 'flex' : 'none';
+    if (document.getElementById('leg-item-satellite')) document.getElementById('leg-item-satellite').style.display = showSat ? 'inline-block' : 'none';
+
+    // Inspection Group
+    const showInsp = document.getElementById('layer-inspection') ? document.getElementById('layer-inspection').checked : false;
+    const inspSec = document.getElementById('legend-section-inspection');
+    if (inspSec) inspSec.style.display = showInsp ? 'block' : 'none';
+
+    // Dividers
+    if (document.getElementById('legend-divider-1')) {
+        document.getElementById('legend-divider-1').style.display = (showHazardGroup && (showContextGroup || showInsp)) ? 'block' : 'none';
+    }
+    if (document.getElementById('legend-divider-2')) {
+        document.getElementById('legend-divider-2').style.display = (showContextGroup && showInsp) ? 'block' : 'none';
+    }
+
+    // Hide entire legend container if all sections are hidden
+    const anyVisible = showHazardGroup || showContextGroup || showInsp;
+    const legendContainer = document.getElementById('legend');
+    if (legendContainer) {
+        if (!legendContainer.classList.contains('collapsed')) {
+            legendContainer.style.display = anyVisible ? 'flex' : 'none';
+            if (anyVisible) legendContainer.style.flexDirection = 'column';
+        } else {
+            legendContainer.style.display = anyVisible ? 'block' : 'none';
+        }
+    }
+}
+
+// Global listener for legend toggle
+document.addEventListener('change', (e) => {
+    if (e.target && e.target.type === 'checkbox' && e.target.id && (e.target.id.startsWith('layer-') || e.target.id.startsWith('layer-10k') || e.target.id.startsWith('layer-50k'))) {
+        updateLegend();
+    }
+});
+
+// Run once on load to initialize legend state
+window.addEventListener('load', () => {
+    setTimeout(updateLegend, 100);
+});
