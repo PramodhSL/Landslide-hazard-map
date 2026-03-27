@@ -45,6 +45,11 @@ self.addEventListener('fetch', (event) => {
     if (event.request.url.indexOf('.pmtiles') !== -1 || event.request.url.indexOf('r2.dev') !== -1) {
         return;
     }
+    
+    // Skip non-HTTP/HTTPS requests (like chrome-extension://)
+    if (!event.request.url.startsWith('http')) {
+        return;
+    }
 
     // Network-First Strategy for HTML/JS/CSS to guarantee live updates!
     event.respondWith(
