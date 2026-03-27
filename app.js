@@ -273,7 +273,7 @@ map.on('load', () => {
                     'match',
                     ['get', 'DN'],
                     10, '#dc2626', // Red
-                    20, '#eab308', // Yellow
+                    20, '#FFFF00', // Yellow
                     'rgba(0,0,0,0)'
                 ],
                 'fill-opacity': 0.6,
@@ -544,7 +544,7 @@ const tizToggleBtn = document.getElementById('layer-tiz');
 if (tizToggleBtn) {
     tizToggleBtn.addEventListener('change', (e) => {
         if (e.target.checked) {
-            showToast('⚠️ NOT FIELD VERIFIED – INTERNAL USE ONLY', 'warning');
+            showToast('⚠️ <b>INTERNAL USE ONLY</b><br><br>The Total Impact Zone (TIZ) layer is a preliminary, model-derived product and has not been field verified. This dataset is restricted to internal institutional use only and is provided solely as a decision-support tool. It should not be used independently or considered as a final or authoritative assessment.', 'warning');
             if (!window.tizZonesLoaded) window.loadTizzones();
         }
         if (map.getLayer('tiz_zones_fill')) {
@@ -1484,20 +1484,21 @@ function showToast(message, type = 'info') {
     if (!toast) {
         toast = document.createElement('div');
         toast.id = 'app-toast';
-        toast.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(100px); background:rgba(15,23,42,0.9); backdrop-filter:blur(10px); color:#fff; padding:12px 24px; border-radius:8px; z-index:9999; box-shadow:0 10px 25px rgba(0,0,0,0.5); border:1px solid rgba(239,68,68,0.5); transition:transform 0.3s cubic-bezier(0.68,-0.55,0.265,1.55), opacity 0.3s; opacity:0; pointer-events:none; font-weight:500; text-align:center; max-width:90vw;';
+        // Positioned perfectly in center of screen
+        toast.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%) scale(0.9); background:rgba(15,23,42,0.95); backdrop-filter:blur(15px); color:#fff; padding:20px 28px; border-radius:12px; z-index:9999; box-shadow:0 15px 40px rgba(0,0,0,0.6); border:1px solid rgba(239,68,68,0.5); transition:transform 0.4s cubic-bezier(0.175,0.885,0.32,1.275), opacity 0.4s; opacity:0; pointer-events:none; font-weight:400; text-align:center; width:90vw; max-width:450px; font-size:0.85rem; line-height:1.5;';
         document.body.appendChild(toast);
     }
     toast.innerHTML = message;
-    if (type === 'warning') toast.style.border = '1px solid rgba(239, 68, 68, 0.5)';
+    if (type === 'warning') toast.style.border = '2px solid rgba(239, 68, 68, 0.8)';
     toast.style.opacity = '1';
-    toast.style.transform = 'translateX(-50%) translateY(0)';
+    toast.style.transform = 'translate(-50%, -50%) scale(1)';
     
     // Clear old timeout
     if (window.toastTimeout) clearTimeout(window.toastTimeout);
     window.toastTimeout = setTimeout(() => {
         toast.style.opacity = '0';
-        toast.style.transform = 'translateX(-50%) translateY(100px)';
-    }, 4000);
+        toast.style.transform = 'translate(-50%, -50%) scale(0.9)';
+    }, 10000); // 10 seconds duration
 }
 
 // Run once on load to initialize legend state
