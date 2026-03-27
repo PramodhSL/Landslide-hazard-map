@@ -540,15 +540,18 @@ document.getElementById('layer-inspection').addEventListener('change', (e) => {
     if (map.getLayer('inspection_points')) map.setLayoutProperty('inspection_points', 'visibility', e.target.checked ? 'visible' : 'none');
 });
 
-document.getElementById('layer-tiz').addEventListener('change', (e) => {
-    if (e.target.checked) {
-        showToast('⚠️ NOT FIELD VERIFIED – INTERNAL USE ONLY', 'warning');
-        if (!window.tizZonesLoaded) window.loadTizzones();
-    }
-    if (map.getLayer('tiz_zones_fill')) {
-        map.setLayoutProperty('tiz_zones_fill', 'visibility', e.target.checked ? 'visible' : 'none');
-    }
-});
+const tizToggleBtn = document.getElementById('layer-tiz');
+if (tizToggleBtn) {
+    tizToggleBtn.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            showToast('⚠️ NOT FIELD VERIFIED – INTERNAL USE ONLY', 'warning');
+            if (!window.tizZonesLoaded) window.loadTizzones();
+        }
+        if (map.getLayer('tiz_zones_fill')) {
+            map.setLayoutProperty('tiz_zones_fill', 'visibility', e.target.checked ? 'visible' : 'none');
+        }
+    });
+}
 
 document.getElementById('layer-arg-locations').addEventListener('change', (e) => {
     if (e.target.checked && !window.argLayersLoaded) window.loadARGLayers();
