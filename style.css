@@ -237,6 +237,7 @@
             margin-bottom: 1.25rem;
             cursor: pointer;
             user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .controls-panel.collapsed .controls-header {
@@ -290,6 +291,7 @@
             /* Fix conflict with FABs on mobile if they overlap */
             position: relative;
             z-index: 2;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .layer-header h4 {
@@ -745,15 +747,17 @@
 
             .controls-panel {
                 top: auto;
-                bottom: 0;
+                bottom: env(safe-area-inset-bottom, 0);
                 right: 0;
                 left: 0;
                 max-width: none;
                 padding: 1rem;
+                padding-bottom: calc(1rem + env(safe-area-inset-bottom, 20px));
                 border-radius: 18px 18px 0 0;
                 border-bottom: none;
-                max-height: 50vh;
+                max-height: calc(65vh - env(safe-area-inset-bottom, 20px));
                 overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
             }
 
             .controls-panel h3 {
@@ -972,4 +976,56 @@
         .toast-icon {
             font-size: 1.2rem;
         }
+
+/* ======================================= */
+/* PREMIUM UI POLISH APPENDMENTS           */
+/* ======================================= */
+
+/* 1. Custom Dark Scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.4);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.7); }
+
+/* 2. Tactile Toggle Switches */
+.slider:active:before { width: 26px; }
+input:checked + .slider:active:before { transform: translateX(18px); }
+
+/* 3. Dropdown Indicator for Mobile Bottom Sheet */
+@media (max-width: 768px) {
+    .controls-panel::before {
+        content: "";
+        display: block;
+        width: 36px;
+        height: 5px;
+        background: rgba(148, 163, 184, 0.4);
+        border-radius: 3px;
+        margin: -4px auto 14px auto;
+    }
+}
+
+/* 4. Animated Tooltips for FABs */
+.fab-tooltip {
+    transform: translateX(10px);
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.fab-btn:hover .fab-tooltip {
+    transform: translateX(0px);
+    opacity: 1;
+}
+
+/* 5. Premium Popups UI Polish */
+.maplibregl-popup-content {
+    background: rgba(15, 23, 42, 0.85) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(139, 92, 246, 0.5) !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6) !important;
+}
+.maplibregl-popup-tip {
+    border-top-color: rgba(15, 23, 42, 0.85) !important;
+}
 
