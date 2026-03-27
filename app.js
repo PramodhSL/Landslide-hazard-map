@@ -254,22 +254,30 @@ map.on('load', () => {
         map.on('mouseleave', 'inspection_points', () => map.getCanvas().style.cursor = '');
     };
 
-    // 2. RED ZONES
-    window.redZonesLoaded = false;
-    window.loadRedZones = function () {
-        if (window.redZonesLoaded) return;
-        window.redZonesLoaded = true;
+    // 2. TOTAL IMPACT ZONE (TIZ)
+    window.tizZonesLoaded = false;
+    window.loadTizzones = function () {
+        if (window.tizZonesLoaded) return;
+        window.tizZonesLoaded = true;
 
-        map.addSource('red_zones', {
+        map.addSource('tiz_zones', {
             type: 'vector',
-            url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/red_zones.pmtiles'
+            url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/tiz_zones.pmtiles'
         });
 
         map.addLayer({
-            'id': 'red_zones_fill',
-            'type': 'fill', 'source': 'red_zones', 'source-layer': 'red_zones',
+            'id': 'tiz_zones_fill',
+            'type': 'fill', 'source': 'tiz_zones', 'source-layer': 'tiz_layer',
             'paint': {
-                'fill-color': '#dc2626', 'fill-opacity': 0.4, 'fill-outline-color': '#991b1b'
+                'fill-color': [
+                    'match',
+                    ['get', 'DN'],
+                    10, '#dc2626', // Red
+                    20, '#eab308', // Yellow
+                    'rgba(0,0,0,0)'
+                ],
+                'fill-opacity': 0.6,
+                'fill-outline-color': '#991b1b'
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-4-zones'); // Zones shelf
@@ -532,14 +540,14 @@ document.getElementById('layer-inspection').addEventListener('change', (e) => {
     if (map.getLayer('inspection_points')) map.setLayoutProperty('inspection_points', 'visibility', e.target.checked ? 'visible' : 'none');
 });
 
-document.getElementById('layer-rz').addEventListener('change', (e) => {
-    if (e.target.checked && !window.redZonesLoaded) window.loadRedZones();
-    if (map.getLayer('red_zones_fill')) map.setLayoutProperty('red_zones_fill', 'visibility', e.target.checked ? 'visible' : 'none');
-});
-
-document.getElementById('layer-yz').addEventListener('change', (e) => {
-    if (e.target.checked && !window.yellowZonesLoaded) window.loadYellowZones();
-    if (map.getLayer('yellow_zones_fill')) map.setLayoutProperty('yellow_zones_fill', 'visibility', e.target.checked ? 'visible' : 'none');
+document.getElementById('layer-tiz').addEventListener('change', (e) => {
+    if (e.target.checked) {
+        showToast('⚠️ NOT FIELD VERIFIED – INTERNAL USE ONLY', 'warning');
+        if (!window.tizZonesLoaded) window.loadTizzones();
+    }
+    if (map.getLayer('tiz_zones_fill')) {
+        map.setLayoutProperty('tiz_zones_fill', 'visibility', e.target.checked ? 'visible' : 'none');
+    }
 });
 
 document.getElementById('layer-arg-locations').addEventListener('change', (e) => {
@@ -1412,15 +1420,13 @@ function updateLegend() {
     const show10k = document.getElementById('layer-10k') ? document.getElementById('layer-10k').checked : false;
     const show50k = document.getElementById('layer-50k') ? document.getElementById('layer-50k').checked : false;
     const showBaseHazard = show10k || show50k;
-    const showRz = document.getElementById('layer-rz') ? document.getElementById('layer-rz').checked : false;
-    const showYz = document.getElementById('layer-yz') ? document.getElementById('layer-yz').checked : false;
-    const showHazardGroup = showBaseHazard || showRz || showYz;
+    const showTiz = document.getElementById('layer-tiz') ? document.getElementById('layer-tiz').checked : false;
+    const showHazardGroup = showBaseHazard || showTiz;
     
     const hazSec = document.getElementById('legend-section-hazard');
     if (hazSec) hazSec.style.display = showHazardGroup ? 'block' : 'none';
     if (document.getElementById('leg-item-base-hazard')) document.getElementById('leg-item-base-hazard').style.display = showBaseHazard ? 'block' : 'none';
-    if (document.getElementById('leg-item-rz')) document.getElementById('leg-item-rz').style.display = showRz ? 'flex' : 'none';
-    if (document.getElementById('leg-item-yz')) document.getElementById('leg-item-yz').style.display = showYz ? 'flex' : 'none';
+    if (document.getElementById('leg-item-tiz')) document.getElementById('leg-item-tiz').style.display = showTiz ? 'flex' : 'none';
 
     // Context Group
     const showArg = document.getElementById('layer-arg-locations') ? document.getElementById('layer-arg-locations').checked : false;
@@ -1466,6 +1472,30 @@ document.addEventListener('change', (e) => {
         updateLegend();
     }
 });
+
+// =============================================
+// TOAST NOTIFICATION SYSTEM
+// =============================================
+function showToast(message, type = 'info') {
+    let toast = document.getElementById('app-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'app-toast';
+        toast.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(100px); background:rgba(15,23,42,0.9); backdrop-filter:blur(10px); color:#fff; padding:12px 24px; border-radius:8px; z-index:9999; box-shadow:0 10px 25px rgba(0,0,0,0.5); border:1px solid rgba(239,68,68,0.5); transition:transform 0.3s cubic-bezier(0.68,-0.55,0.265,1.55), opacity 0.3s; opacity:0; pointer-events:none; font-weight:500; text-align:center; max-width:90vw;';
+        document.body.appendChild(toast);
+    }
+    toast.innerHTML = message;
+    if (type === 'warning') toast.style.border = '1px solid rgba(239, 68, 68, 0.5)';
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateX(-50%) translateY(0)';
+    
+    // Clear old timeout
+    if (window.toastTimeout) clearTimeout(window.toastTimeout);
+    window.toastTimeout = setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(-50%) translateY(100px)';
+    }, 4000);
+}
 
 // Run once on load to initialize legend state
 window.addEventListener('load', () => {

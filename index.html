@@ -162,26 +162,16 @@
                             <span class="slider"></span>
                         </label>
                     </div>
-                    <div class="layer-toggle">
-                        <span class="layer-label" style="display:flex; align-items:center; gap:6px;">
-                            <span
-                                style="width:10px; height:10px; background:rgba(220, 38, 38, 0.6); border:1px solid #dc2626; display:inline-block;"></span>
-                            Red Zones (High Hazard)
+                    <div class="layer-toggle" style="flex-wrap: wrap;">
+                        <span class="layer-label" style="display:flex; align-items:center; gap:6px; width: 100%;">
+                            <span style="width:10px; height:10px; background:linear-gradient(to right, #dc2626 50%, #eab308 50%); border:1px solid #991b1b; display:inline-block;"></span>
+                            The Total Impact Zone (TIZ)
                         </span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="layer-rz">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="layer-toggle">
-                        <span class="layer-label" style="display:flex; align-items:center; gap:6px;">
-                            <span
-                                style="width:10px; height:10px; background:rgba(255, 255, 0, 0.6); border:1px solid #EAB308; display:inline-block;"></span>
-                            Yellow Zones (Moderate)
-                        </span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="layer-yz">
+                        <div style="font-size: 0.65rem; color: #ef4444; font-style: italic; width: 100%; padding-left: 16px; margin-top: -4px;">
+                            ⚠️ NOT FIELD VERIFIED – INTERNAL USE ONLY
+                        </div>
+                        <label class="toggle-switch" style="position: absolute; right: 0; margin-top: 4px;">
+                            <input type="checkbox" id="layer-tiz">
                             <span class="slider"></span>
                         </label>
                     </div>
@@ -295,14 +285,14 @@
             <div id="legend-section-hazard">
                 <div class="legend-section-title" style="font-weight: 600; margin-bottom: 5px; font-size: 0.85rem; color: #a78bfa;">Hazard Levels & Zones</div>
                 
-                <div id="leg-item-rz" style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                    <span style="width:10px; height:10px; background:rgba(220, 38, 38, 0.6); border:1px solid #dc2626; display:inline-block;"></span>
-                    Red Zones (High Hazard)
-                </div>
-                
-                <div id="leg-item-yz" style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                    <span style="width:10px; height:10px; background:rgba(250, 204, 21, 0.6); border:1px solid #eab308; display:inline-block;"></span>
-                    Yellow Zones (Moderate)
+                <div id="leg-item-tiz" style="display:flex; flex-direction:column; gap:2px; margin-bottom:6px;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span style="width:10px; height:10px; background:linear-gradient(to right, #dc2626 50%, #eab308 50%); border:1px solid #991b1b; display:inline-block;"></span>
+                        <span style="color:#e2e8f0;">The Total Impact Zone (TIZ)</span>
+                    </div>
+                    <div style="font-size:0.65rem; color:#ef4444; font-style:italic; padding-left:16px;">
+                        ⚠️ NOT FIELD VERIFIED – INTERNAL USE
+                    </div>
                 </div>
                 
                 <div id="leg-item-base-hazard">
