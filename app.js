@@ -225,13 +225,16 @@ map.on('load', () => {
             'type': 'circle',
             'source': 'inspection_reports',
             'paint': {
-                'circle-radius': 6, 
+                'circle-radius': 8, 
                 'circle-color': [
                     'case',
-                    ['in', 'HR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#ef4444',
-                    ['in', 'P1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#ef4444',
-                    ['in', 'P2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#ef4444',
-                    ['in', 'P3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#ef4444',
+                    ['in', 'HR1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#7f1d1d', // Dark Red
+                    ['in', 'P1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#7f1d1d',
+                    ['in', 'HR2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#dc2626', // Medium Red
+                    ['in', 'P2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#dc2626',
+                    ['in', 'HR3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#f87171', // Light Red
+                    ['in', 'P3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#f87171',
+                    ['in', 'HR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#ef4444', // Generic Red
                     ['in', 'MR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#eab308',
                     ['in', 'LR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#22c55e',
                     ['in', 'HR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#ef4444',
@@ -242,7 +245,7 @@ map.on('load', () => {
                     ['in', 'LOW', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#22c55e',
                     '#2563eb'
                 ],
-                'circle-stroke-width': 2, 
+                'circle-stroke-width': 1.5, 
                 'circle-stroke-color': '#ffffff'
             },
             'layout': { 'visibility': 'visible' }

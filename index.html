@@ -4,7 +4,7 @@
 <head>
     <script>
         // Force aggressive cache purge for returning users
-        const APP_VERSION = "2.0"; 
+        const APP_VERSION = "2.1"; 
         if (localStorage.getItem('lhmpVersion') !== APP_VERSION) {
             localStorage.setItem('lhmpVersion', APP_VERSION);
             if ('serviceWorker' in navigator) {
@@ -339,8 +339,16 @@
             <div id="legend-section-inspection">
                 <div class="legend-section-title" style="font-weight: 600; margin-bottom: 5px; font-size: 0.85rem; color: #a78bfa;">Inspection Reports</div>
                 <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                    <span style="width:10px; height:10px; border-radius:50%; background:#ef4444; border:1px solid #fff; display:inline-block;"></span>
-                    High Risk
+                    <span style="width:10px; height:10px; border-radius:50%; background:#7f1d1d; border:1px solid #fff; display:inline-block;"></span>
+                    High Risk (Priority 1)
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span style="width:10px; height:10px; border-radius:50%; background:#dc2626; border:1px solid #fff; display:inline-block;"></span>
+                    High Risk (Priority 2)
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span style="width:10px; height:10px; border-radius:50%; background:#f87171; border:1px solid #fff; display:inline-block;"></span>
+                    High Risk (Priority 3)
                 </div>
                 <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
                     <span style="width:10px; height:10px; border-radius:50%; background:#eab308; border:1px solid #fff; display:inline-block;"></span>
@@ -352,7 +360,7 @@
                 </div>
                 <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
                     <span style="width:10px; height:10px; border-radius:50%; background:#2563eb; border:1px solid #fff; display:inline-block;"></span>
-                    Other
+                    Other / Uncategorized
                 </div>
             </div>
         </div>
