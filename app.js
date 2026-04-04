@@ -225,27 +225,63 @@ map.on('load', () => {
             'type': 'circle',
             'source': 'inspection_reports',
             'paint': {
-                'circle-radius': 8, 
+                'circle-radius': 5, 
                 'circle-color': [
                     'case',
-                    ['in', 'HR1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#7f1d1d', // Dark Red
-                    ['in', 'P1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#7f1d1d',
-                    ['in', 'HR2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#dc2626', // Medium Red
-                    ['in', 'P2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#dc2626',
-                    ['in', 'HR3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#f87171', // Light Red
-                    ['in', 'P3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#f87171',
-                    ['in', 'HR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#ef4444', // Generic Red
-                    ['in', 'MR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#eab308',
-                    ['in', 'LR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]], '#22c55e',
-                    ['in', 'HR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#ef4444',
-                    ['in', 'HIGH', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#ef4444',
-                    ['in', 'MR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#eab308',
-                    ['in', 'MEDIUM', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#eab308',
-                    ['in', 'LR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#22c55e',
-                    ['in', 'LOW', ['upcase', ['coalesce', ['get', 'Risk level'], '']]], '#22c55e',
-                    '#2563eb'
+                    /* ================= PRIORITY 1 ================= */
+                    ['any', 
+                        ['in', 'HR1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                        ['in', 'HR 1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                        ['in', 'P1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                        ['in', 'HR1', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                        ['in', 'HR 1', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                        ['in', 'P1', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
+                    ], '#7f1d1d', // Dark Red
+
+                    /* ================= PRIORITY 2 ================= */
+                    ['any', 
+                        ['in', 'HR2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                        ['in', 'HR 2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                        ['in', 'P2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                        ['in', 'HR2', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                        ['in', 'HR 2', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                        ['in', 'P2', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
+                    ], '#dc2626', // Medium Red
+
+                    /* ================= PRIORITY 3 ================= */
+                    ['any', 
+                        ['in', 'HR3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                        ['in', 'HR 3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                        ['in', 'P3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                        ['in', 'HR3', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                        ['in', 'HR 3', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                        ['in', 'P3', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
+                    ], '#f87171', // Light Red
+
+                    /* ================= GENERIC HIGH ================= */
+                    ['any', 
+                        ['in', 'HR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                        ['in', 'HR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                        ['in', 'HIGH', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
+                    ], '#ef4444', 
+
+                    /* ================= MEDIUM MATCHES ================= */
+                    ['any', 
+                        ['in', 'MR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                        ['in', 'MR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                        ['in', 'MEDIUM', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
+                    ], '#eab308',
+
+                    /* ================= LOW MATCHES ================= */
+                    ['any', 
+                        ['in', 'LR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                        ['in', 'LR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                        ['in', 'LOW', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
+                    ], '#22c55e',
+
+                    '#2563eb' // Default Blue
                 ],
-                'circle-stroke-width': 1.5, 
+                'circle-stroke-width': 1, 
                 'circle-stroke-color': '#ffffff'
             },
             'layout': { 'visibility': 'visible' }
