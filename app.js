@@ -1502,7 +1502,9 @@ function updateLegend() {
     const show10k = document.getElementById('layer-10k') ? document.getElementById('layer-10k').checked : false;
     const show50k = document.getElementById('layer-50k') ? document.getElementById('layer-50k').checked : false;
     const showBaseHazard = show10k || show50k;
-    const showTiz = document.getElementById('layer-tiz') ? document.getElementById('layer-tiz').checked : false;
+    const showTiz10k = document.getElementById('layer-tiz') ? document.getElementById('layer-tiz').checked : false;
+    const showTiz50k = document.getElementById('layer-tiz-50k') ? document.getElementById('layer-tiz-50k').checked : false;
+    const showTiz = showTiz10k || showTiz50k;
     const showHazardGroup = showBaseHazard || showTiz;
     
     const hazSec = document.getElementById('legend-section-hazard');
