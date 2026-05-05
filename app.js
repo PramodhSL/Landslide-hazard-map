@@ -293,7 +293,7 @@ map.on('load', () => {
         map.on('mouseleave', 'inspection_points', () => map.getCanvas().style.cursor = '');
     };
 
-    // 2. TOTAL IMPACT ZONE (TIZ)
+    // 2. TOTAL IMPACT ZONE (TIZ) — 1:10,000
     window.tizZonesLoaded = false;
     window.loadTizzones = function () {
         if (window.tizZonesLoaded) return;
@@ -301,7 +301,7 @@ map.on('load', () => {
 
         map.addSource('tiz_zones', {
             type: 'vector',
-            url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/tiz_zones.pmtiles'
+            url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/tiz_10k.pmtiles'
         });
 
         map.addLayer({
@@ -309,17 +309,44 @@ map.on('load', () => {
             'type': 'fill', 'source': 'tiz_zones', 'source-layer': 'tiz_layer',
             'paint': {
                 'fill-color': [
-                    'match',
-                    ['get', 'DN'],
-                    10, '#dc2626', // Red
-                    20, '#FFFF00', // Yellow
+                    'match', ['get', 'DN'],
+                    10, '#dc2626',
+                    20, '#FFFF00',
                     'rgba(0,0,0,0)'
                 ],
                 'fill-opacity': 0.6,
                 'fill-outline-color': '#991b1b'
             },
             'layout': { 'visibility': 'visible' }
-        }, 'z-index-4-zones'); // Zones shelf
+        }, 'z-index-4-zones');
+    };
+
+    // 2b. TOTAL IMPACT ZONE (TIZ) — 1:50,000
+    window.tizZones50kLoaded = false;
+    window.loadTizzones50k = function () {
+        if (window.tizZones50kLoaded) return;
+        window.tizZones50kLoaded = true;
+
+        map.addSource('tiz_zones_50k', {
+            type: 'vector',
+            url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/tiz_50k.pmtiles'
+        });
+
+        map.addLayer({
+            'id': 'tiz_zones_50k_fill',
+            'type': 'fill', 'source': 'tiz_zones_50k', 'source-layer': 'tiz_layer',
+            'paint': {
+                'fill-color': [
+                    'match', ['get', 'DN'],
+                    10, '#dc2626',
+                    20, '#FFFF00',
+                    'rgba(0,0,0,0)'
+                ],
+                'fill-opacity': 0.6,
+                'fill-outline-color': '#991b1b'
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-4-zones');
     };
 
     // ARG Rain Gauges & Thiessen Polygons
@@ -588,6 +615,19 @@ if (tizToggleBtn) {
         }
         if (map.getLayer('tiz_zones_fill')) {
             map.setLayoutProperty('tiz_zones_fill', 'visibility', e.target.checked ? 'visible' : 'none');
+        }
+    });
+}
+
+const tiz50kToggleBtn = document.getElementById('layer-tiz-50k');
+if (tiz50kToggleBtn) {
+    tiz50kToggleBtn.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            showToast('⚠️ <b>INTERNAL USE ONLY</b><br><br>The Total Impact Zone (TIZ) layer is a preliminary, model-derived product and has not been field verified. This dataset is restricted to internal institutional use only and is provided solely as a decision-support tool. It should not be used independently or considered as a final or authoritative assessment.', 'warning');
+            if (!window.tizZones50kLoaded) window.loadTizzones50k();
+        }
+        if (map.getLayer('tiz_zones_50k_fill')) {
+            map.setLayoutProperty('tiz_zones_50k_fill', 'visibility', e.target.checked ? 'visible' : 'none');
         }
     });
 }
@@ -1544,3 +1584,35 @@ function showToast(message, type = 'info') {
 window.addEventListener('load', () => {
     setTimeout(updateLegend, 100);
 });
+
+// Mobile Tooltip Helper: Shows what an icon does when touched (since mobile has no hover)
+document.addEventListener('touchstart', (e) => {
+    let target = e.target.closest('.fab-btn, .maplibregl-ctrl button');
+    if (target) {
+        let title = target.getAttribute('title') || target.getAttribute('aria-label');
+        
+        // Prefer explicit tooltips for FABs
+        if (target.classList.contains('fab-btn')) {
+            let tooltipSpan = target.querySelector('.fab-tooltip');
+            if (tooltipSpan) title = tooltipSpan.innerText;
+        }
+        
+        if (title) {
+            let existing = document.getElementById('mobile-quick-tooltip');
+            if (!existing) {
+                existing = document.createElement('div');
+                existing.id = 'mobile-quick-tooltip';
+                // Small black pill tooltip at the top center
+                existing.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(15,23,42,0.9); border:1px solid rgba(139,92,246,0.5); color:#fff; padding:6px 14px; border-radius:20px; font-size:0.85rem; z-index:99999; pointer-events:none; transition:opacity 0.2s; box-shadow:0 4px 10px rgba(0,0,0,0.3); font-weight:500;';
+                document.body.appendChild(existing);
+            }
+            existing.innerText = title;
+            existing.style.opacity = '1';
+            
+            clearTimeout(window.mobileTooltipTimer);
+            window.mobileTooltipTimer = setTimeout(() => {
+                if(existing) existing.style.opacity = '0';
+            }, 2000); // Hide after 2 seconds
+        }
+    }
+}, {passive: true});
