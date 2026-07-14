@@ -4,6 +4,13 @@ let searchResults;
 let searchInput;
 let clearBtn;
 
+// All data is fetched directly from the Cloudflare R2 bucket.
+const DATA_BASE_URL = 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev';
+
+// Local search and summary statistics variables
+let localSearchIndex = [];
+let summaryStats = null;
+
 // Toast Notification System
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
@@ -56,12 +63,13 @@ const map = new maplibregl.Map({
     container: 'map',
     style: {
         version: 8,
+        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
         sources: {
             'osm': {
                 type: 'raster',
-                tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'],
                 tileSize: 256,
-                attribution: '© OpenStreetMap contributors'
+                attribution: '© OpenStreetMap contributors, © CARTO'
             }
             // Satellite, hillshade, and hybrid-labels will be loaded on-demand
         },
@@ -133,7 +141,7 @@ map.on('load', () => {
     // Only load 1:50k initially (lighter, faster)
     map.addSource('hazard_50k', {
         type: 'vector',
-        url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/LHMP_50000.pmtiles',
+        url: `pmtiles://${DATA_BASE_URL}/LHMP_50000.pmtiles`,
         attribution: 'NBRO',
         minzoom: 7,
         maxzoom: 24 // Allow overzooming deeply
@@ -172,7 +180,7 @@ map.on('load', () => {
         if (!map.getSource('hazard_10k')) {
             map.addSource('hazard_10k', {
                 type: 'vector',
-                url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/LHZM_10000.pmtiles',
+                url: `pmtiles://${DATA_BASE_URL}/LHZM_10000.pmtiles`,
                 attribution: 'NBRO',
                 minzoom: 12,
                 maxzoom: 24
@@ -208,7 +216,7 @@ map.on('load', () => {
 
     // --- LAZY LOADERS ---
 
-    // 1. INSPECTION REPORTS
+    // 1. INSPECTION REPORTS (LOAD CLUSTERED GEOJSON)
     window.inspectionLoaded = false;
     window.loadInspection = function () {
         if (window.inspectionLoaded) return;
@@ -216,16 +224,103 @@ map.on('load', () => {
 
         map.addSource('inspection_reports', {
             type: 'geojson',
-            data: 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/inspection_reports.geojson',
-            tolerance: 10, buffer: 0
+            data: `${DATA_BASE_URL}/inspection_reports.geojson`,
+            cluster: true,
+            clusterMaxZoom: 13,
+            clusterRadius: 50,
+            clusterProperties: {
+                'hr_count': ['+', ['case', 
+                    ['any', 
+                        ['in', 'HR1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'HR 1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'P1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'HR2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'HR 2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'P2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'HR3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'HR 3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'P3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'HIGH', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'H', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]]
+                    ], 1, 0
+                ]],
+                'mr_count': ['+', ['case', 
+                    ['any', 
+                        ['in', 'MR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'MEDIUM', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'M', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'P4', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'P 4', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'PRIORITY 4', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]]
+                    ], 1, 0
+                ]],
+                'lr_count': ['+', ['case', 
+                    ['any', 
+                        ['in', 'LR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'LOW', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
+                        ['in', 'L', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]]
+                    ], 1, 0
+                ]]
+            }
         });
 
+        // Cluster Circles (Hollow with risk color-coded strokes)
+        map.addLayer({
+            'id': 'inspection_clusters',
+            'type': 'circle',
+            'source': 'inspection_reports',
+            'filter': ['has', 'point_count'],
+            'paint': {
+                'circle-color': 'rgba(15, 23, 42, 0.6)', // Glassmorphic translucent background
+                'circle-radius': [
+                    'step',
+                    ['get', 'point_count'],
+                    20,
+                    100, 28,
+                    750, 36
+                ],
+                'circle-stroke-width': 4.0, // Thick distinct outline
+                'circle-stroke-color': [
+                    'case',
+                    ['all', 
+                        ['>=', ['coalesce', ['get', 'hr_count'], 0], ['coalesce', ['get', 'mr_count'], 0]],
+                        ['>=', ['coalesce', ['get', 'hr_count'], 0], ['coalesce', ['get', 'lr_count'], 0]]
+                    ], '#dc2626', // Red for HR majority
+                    ['all', 
+                        ['>=', ['coalesce', ['get', 'mr_count'], 0], ['coalesce', ['get', 'hr_count'], 0]],
+                        ['>=', ['coalesce', ['get', 'mr_count'], 0], ['coalesce', ['get', 'lr_count'], 0]]
+                    ], '#eab308', // Yellow/Amber for MR majority
+                    '#22c55e' // Green for LR majority
+                ]
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-6-top');
+
+        // Cluster Count Labels (White text for contrast)
+        map.addLayer({
+            'id': 'inspection_cluster_count',
+            'type': 'symbol',
+            'source': 'inspection_reports',
+            'filter': ['has', 'point_count'],
+            'layout': {
+                'text-field': '{point_count}',
+                'text-size': 12,
+                'text-allow-overlap': true,
+                'visibility': 'visible'
+            },
+            'paint': {
+                'text-color': '#ffffff'
+            }
+        }, 'z-index-6-top');
+
+        // Unclustered Points (Individual dots)
         map.addLayer({
             'id': 'inspection_points',
             'type': 'circle',
             'source': 'inspection_reports',
+            'filter': ['!', ['has', 'point_count']],
             'paint': {
-                'circle-radius': 5, 
+                'circle-radius': 6, 
                 'circle-color': [
                     'case',
                     /* ================= PRIORITY 1 ================= */
@@ -281,16 +376,29 @@ map.on('load', () => {
 
                     '#2563eb' // Default Blue
                 ],
-                'circle-stroke-width': 1, 
+                'circle-stroke-width': 1.5, 
                 'circle-stroke-color': '#ffffff'
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-6-top'); // Top shelf
 
+        // Click on cluster zooms in
+        map.on('click', 'inspection_clusters', async (e) => {
+            const features = map.queryRenderedFeatures(e.point, { layers: ['inspection_clusters'] });
+            const clusterId = features[0].properties.cluster_id;
+            const zoom = await map.getSource('inspection_reports').getClusterExpansionZoom(clusterId);
+            map.easeTo({
+                center: features[0].geometry.coordinates,
+                zoom: zoom + 0.5
+            });
+        });
+
         // Re-bind events
         map.on('click', 'inspection_points', showPopup);
         map.on('mouseenter', 'inspection_points', () => map.getCanvas().style.cursor = 'pointer');
         map.on('mouseleave', 'inspection_points', () => map.getCanvas().style.cursor = '');
+        map.on('mouseenter', 'inspection_clusters', () => map.getCanvas().style.cursor = 'pointer');
+        map.on('mouseleave', 'inspection_clusters', () => map.getCanvas().style.cursor = '');
     };
 
     // 2. TOTAL IMPACT ZONE (TIZ) — 1:10,000
@@ -301,7 +409,7 @@ map.on('load', () => {
 
         map.addSource('tiz_zones', {
             type: 'vector',
-            url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/tiz_10k.pmtiles'
+            url: `pmtiles://${DATA_BASE_URL}/tiz_10k.pmtiles`
         });
 
         map.addLayer({
@@ -329,7 +437,7 @@ map.on('load', () => {
 
         map.addSource('tiz_zones_50k', {
             type: 'vector',
-            url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/tiz_50k.pmtiles'
+            url: `pmtiles://${DATA_BASE_URL}/tiz_50k.pmtiles`
         });
 
         map.addLayer({
@@ -358,7 +466,8 @@ map.on('load', () => {
         // Thiessen Polygons Source & Layer
         map.addSource('arg_thiessen', {
             type: 'geojson',
-            data: 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/arg_thiessen.geojson'
+            data: `${DATA_BASE_URL}/arg_thiessen.geojson`,
+            tolerance: 1.5
         });
         map.addLayer({
             'id': 'arg_thiessen_fill',
@@ -388,7 +497,7 @@ map.on('load', () => {
         // Point Locations Source & Layer (Symbol with square icon)
         map.addSource('arg_locations', {
             type: 'geojson',
-            data: 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/arg_locations.geojson'
+            data: `${DATA_BASE_URL}/arg_locations.geojson`
         });
         map.addLayer({
             'id': 'arg_locations_points',
@@ -402,31 +511,10 @@ map.on('load', () => {
         }, 'z-index-6-top');
     };
 
-    // 3. YELLOW ZONES
-    window.yellowZonesLoaded = false;
-    window.loadYellowZones = function () {
-        if (window.yellowZonesLoaded) return;
-        window.yellowZonesLoaded = true;
-
-        map.addSource('yellow_zones', {
-            type: 'vector',
-            url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/yellow_zones.pmtiles'
-        });
-
-        map.addLayer({
-            'id': 'yellow_zones_fill',
-            'type': 'fill', 'source': 'yellow_zones', 'source-layer': 'yellow_zones',
-            'paint': {
-                'fill-color': '#FFFF00', 'fill-opacity': 0.4, 'fill-outline-color': '#EAB308'
-            },
-            'layout': { 'visibility': 'visible' }
-        }, 'z-index-4-zones'); // Zones shelf
-    };
-
     // 4. CONTOURS & SATELLITE (Grouped logic where appropriate)
     map.addSource('satellite_landslides', {
         type: 'vector',
-        url: 'pmtiles://satellite_landslides.pmtiles',
+        url: `pmtiles://${DATA_BASE_URL}/satellite_landslides.pmtiles`,
         attribution: 'Human Settlement & Planning Division'
     });
     // Satellite layers can stay here as they are small, or moved. Getting to complex to move everything.
@@ -441,7 +529,7 @@ map.on('load', () => {
         // Check if source exists (satellite might share it? no)
         map.addSource('contours', {
             type: 'vector',
-            url: 'pmtiles://https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/Contour_20M.pmtiles',
+            url: `pmtiles://${DATA_BASE_URL}/Contour_20M.pmtiles`,
             attribution: 'NBRO'
         });
 
@@ -453,6 +541,49 @@ map.on('load', () => {
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-5-overlays');
+    };
+
+
+    // Released Areas Lazy
+    window.releasedAreasLoaded = false;
+    window.loadReleasedAreas = function () {
+        if (window.releasedAreasLoaded) return;
+        window.releasedAreasLoaded = true;
+
+        map.addSource('released_areas_source', {
+            type: 'geojson',
+            data: `${DATA_BASE_URL}/released_areas.geojson`,
+            tolerance: 1.5
+        });
+
+        // Fill layer
+        map.addLayer({
+            'id': 'released_areas_fill',
+            'type': 'fill',
+            'source': 'released_areas_source',
+            'paint': {
+                'fill-color': '#a855f7', // Purple
+                'fill-opacity': parseFloat(document.getElementById('opacity-released-areas').value) / 100
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-5-overlays');
+
+        // Border/outline layer
+        map.addLayer({
+            'id': 'released_areas_outline',
+            'type': 'line',
+            'source': 'released_areas_source',
+            'paint': {
+                'line-color': '#7e22ce', // Dark Purple
+                'line-width': 1.5,
+                'line-opacity': 0.8
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-5-overlays');
+
+        map.on('click', 'released_areas_fill', showPopup);
+        map.on('mouseenter', 'released_areas_fill', () => map.getCanvas().style.cursor = 'pointer');
+        map.on('mouseleave', 'released_areas_fill', () => map.getCanvas().style.cursor = '');
     };
 
     // Satellite Landslides (Polygons)
@@ -502,6 +633,9 @@ map.on('load', () => {
     map.on('mouseenter', 'satellite_polygons', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'satellite_polygons', () => map.getCanvas().style.cursor = '');
 
+    // Fetch summary.json and search_index.json
+    loadDashboardAndSearchData();
+
     // Map loaded - hide loading indicator with smooth transition
     updateProgress(100, 'Map ready!');
     setTimeout(() => {
@@ -523,23 +657,116 @@ setTimeout(() => {
 function showPopup(e) {
     const coordinates = e.lngLat;
     const props = e.features[0].properties;
+    const layerId = e.features[0].layer ? e.features[0].layer.id : '';
 
-    let content = '<div class="popup-title">Feature Information</div>';
-    content += '<div class="popup-info">';
-    for (const key in props) {
-        if (props[key] !== null) {
-            content += `<b>${key}:</b> ${props[key]}<br>`;
+    let content = '';
+
+    if (layerId === 'inspection_points') {
+        const refNo = props['Ref. Code'] || props['Ref. No.'] || props['Reference Number'] || props['Ref No'] || props['Name'] || 'N/A';
+        const risk = props['HR (Priority level)'] || props['Risk level'] || 'N/A';
+
+        // Badge styling based on risk
+        let badgeColor = '#3b82f6'; // default blue
+        let badgeBg = 'rgba(59, 130, 246, 0.15)';
+        const riskUpper = risk.toString().toUpperCase();
+        if (riskUpper.includes('P1') || riskUpper.includes('HR1') || riskUpper.includes('HR 1')) {
+            badgeColor = '#ef4444'; // Red
+            badgeBg = 'rgba(239, 68, 68, 0.15)';
+        } else if (riskUpper.includes('P2') || riskUpper.includes('HR2') || riskUpper.includes('HR 2')) {
+            badgeColor = '#f97316'; // Orange
+            badgeBg = 'rgba(249, 115, 22, 0.15)';
+        } else if (riskUpper.includes('P3') || riskUpper.includes('HR3') || riskUpper.includes('HR 3')) {
+            badgeColor = '#f59e0b'; // Amber
+            badgeBg = 'rgba(245, 158, 11, 0.15)';
+        } else if (riskUpper.includes('MR') || riskUpper.includes('MEDIUM')) {
+            badgeColor = '#eab308'; // Yellow
+            badgeBg = 'rgba(234, 179, 8, 0.15)';
+        } else if (riskUpper.includes('LR') || riskUpper.includes('LOW')) {
+            badgeColor = '#10b981'; // Green
+            badgeBg = 'rgba(16, 185, 129, 0.15)';
         }
-    }
-    content += '</div>';
 
-    new maplibregl.Popup()
+        // Build list of details dynamically
+        let detailsHtml = '';
+        const gpsKeys = ['latitude', 'longitude', 'gps', 'e', 'n', 'x', 'y', 'coordinate', 'coordinates', 'geometry', 'fid', 'objectid', 'source file', 'source sheet', 'typing', 'gps (wgs 84, in decimal degrees)'];
+
+        for (const key in props) {
+            if (props[key] !== null && props[key] !== undefined) {
+                const valStr = props[key].toString().trim();
+                if (valStr === '' || valStr === 'N/A') continue;
+
+                const lowerKey = key.toLowerCase().trim();
+                // Skip GPS and metadata keys, including single letters E/N/X/Y
+                if (gpsKeys.includes(lowerKey) || 
+                    lowerKey.includes('gps') || 
+                    lowerKey === 'e' || lowerKey === 'n' || lowerKey === 'x' || lowerKey === 'y') {
+                    continue;
+                }
+
+                // If key is Ref. Code or Ref. No., it is already in the header
+                if (lowerKey === 'ref. code' || lowerKey === 'ref. no.' || lowerKey === 'ref no' || lowerKey === 'reference number') {
+                    continue;
+                }
+
+                detailsHtml += `
+                    <div style="margin-bottom: 8px; display: flex; flex-direction: column; gap: 2px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+                        <span style="color: #94a3b8; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">${key}</span>
+                        <span style="color: #fff; font-size: 0.8rem; line-height: 1.4; word-break: break-word;">${valStr}</span>
+                    </div>
+                `;
+            }
+        }
+
+        content = `
+            <div style="padding: 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 280px; max-width: 320px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; padding-right: 24px;">
+                    <span style="font-weight: 700; color: #fff; font-size: 0.85rem; word-break: break-all; flex: 1; min-width: 0; padding-right: 8px;">📍 Ref: ${refNo}</span>
+                    <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid ${badgeColor}; color: ${badgeColor}; background: ${badgeBg}; white-space: nowrap; flex-shrink: 0;">${risk}</span>
+                </div>
+                <div class="custom-popup-scroll" style="display: flex; flex-direction: column; max-height: 260px; overflow-y: auto; padding-right: 6px;">
+                    ${detailsHtml || '<div style="color:#94a3b8; font-size:0.75rem;">No details available</div>'}
+                </div>
+            </div>
+        `;
+    } else if (layerId === 'released_areas_fill') {
+        const areaVal = props['Shape_Area'] ? (parseFloat(props['Shape_Area']) / 1000000).toFixed(3) + ' km²' : 'N/A';
+        const lenVal = props['Shape_Leng'] ? parseFloat(props['Shape_Leng']).toFixed(1) + ' m' : 'N/A';
+        content = `
+            <div style="padding: 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 240px; max-width: 280px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
+                    <span style="font-weight: 700; color: #fff; font-size: 0.85rem;">🟪 Released Area (IRS/LI)</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.75rem; color: #cbd5e1; line-height: 1.4;">
+                    <div><b>Status:</b> Released from Landslide Risk</div>
+                    <div><b>Area Size:</b> ${areaVal}</div>
+                    <div><b>Perimeter:</b> ${lenVal}</div>
+                </div>
+            </div>
+        `;
+    } else {
+        // Generic popup for other layers
+        content = '<div class="popup-title">Feature Information</div>';
+        content += '<div class="popup-info">';
+        for (const key in props) {
+            if (props[key] !== null && props[key] !== undefined) {
+                content += `<b>${key}:</b> ${props[key]}<br>`;
+            }
+        }
+        content += '</div>';
+    }
+
+    new maplibregl.Popup({ className: 'custom-modern-popup' })
         .setLngLat(coordinates)
         .setHTML(content)
         .addTo(map);
 }
 
-document.getElementById('layer-10k').addEventListener('change', (e) => {
+function safeAddEventListener(id, event, callback) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(event, callback);
+}
+
+safeAddEventListener('layer-10k', 'change', (e) => {
     // Load 1:10k on demand if user toggles it
     if (e.target.checked && !window.hazard10kLoaded) {
         window.loadHazard10k();
@@ -552,20 +779,20 @@ document.getElementById('layer-10k').addEventListener('change', (e) => {
     updateMaxZoom();
 });
 
-document.getElementById('opacity-10k').addEventListener('input', (e) => {
+safeAddEventListener('opacity-10k', 'input', (e) => {
     const opacity = parseInt(e.target.value) / 100;
     if (map.getLayer('hazard_10k_fill')) {
         map.setPaintProperty('hazard_10k_fill', 'fill-opacity', opacity);
     }
 });
 
-document.getElementById('layer-50k').addEventListener('change', (e) => {
+safeAddEventListener('layer-50k', 'change', (e) => {
     map.setLayoutProperty('hazard_50k_fill', 'visibility', e.target.checked ? 'visible' : 'none');
     // Dynamic zoom restriction: 1:50k supports up to zoom 14
     updateMaxZoom();
 });
 
-document.getElementById('opacity-50k').addEventListener('input', (e) => {
+safeAddEventListener('opacity-50k', 'input', (e) => {
     const opacity = parseInt(e.target.value) / 100;
     if (map.getLayer('hazard_50k_fill')) {
         map.setPaintProperty('hazard_50k_fill', 'fill-opacity', opacity);
@@ -596,14 +823,32 @@ function updateMaxZoom() {
 
 // Update configuration toggles to use lazy loaders
 
-document.getElementById('layer-contours').addEventListener('change', (e) => {
+safeAddEventListener('layer-contours', 'change', (e) => {
     if (e.target.checked && !window.contoursLoaded) window.loadContours();
     if (map.getLayer('contours_line')) map.setLayoutProperty('contours_line', 'visibility', e.target.checked ? 'visible' : 'none');
 });
 
-document.getElementById('layer-inspection').addEventListener('change', (e) => {
+
+safeAddEventListener('layer-released-areas', 'change', (e) => {
+    if (e.target.checked && !window.releasedAreasLoaded) window.loadReleasedAreas();
+    const visibility = e.target.checked ? 'visible' : 'none';
+    if (map.getLayer('released_areas_fill')) map.setLayoutProperty('released_areas_fill', 'visibility', visibility);
+    if (map.getLayer('released_areas_outline')) map.setLayoutProperty('released_areas_outline', 'visibility', visibility);
+});
+
+safeAddEventListener('opacity-released-areas', 'input', (e) => {
+    const opacity = parseInt(e.target.value) / 100;
+    if (map.getLayer('released_areas_fill')) {
+        map.setPaintProperty('released_areas_fill', 'fill-opacity', opacity);
+    }
+});
+
+safeAddEventListener('layer-inspection', 'change', (e) => {
     if (e.target.checked && !window.inspectionLoaded) window.loadInspection();
-    if (map.getLayer('inspection_points')) map.setLayoutProperty('inspection_points', 'visibility', e.target.checked ? 'visible' : 'none');
+    const visibility = e.target.checked ? 'visible' : 'none';
+    if (map.getLayer('inspection_points')) map.setLayoutProperty('inspection_points', 'visibility', visibility);
+    if (map.getLayer('inspection_clusters')) map.setLayoutProperty('inspection_clusters', 'visibility', visibility);
+    if (map.getLayer('inspection_cluster_count')) map.setLayoutProperty('inspection_cluster_count', 'visibility', visibility);
 });
 
 const tizToggleBtn = document.getElementById('layer-tiz');
@@ -632,17 +877,17 @@ if (tiz50kToggleBtn) {
     });
 }
 
-document.getElementById('layer-arg-locations').addEventListener('change', (e) => {
+safeAddEventListener('layer-arg-locations', 'change', (e) => {
     if (e.target.checked && !window.argLayersLoaded) window.loadARGLayers();
     if (map.getLayer('arg_locations_points')) map.setLayoutProperty('arg_locations_points', 'visibility', e.target.checked ? 'visible' : 'none');
 });
 
-document.getElementById('layer-arg-thiessen').addEventListener('change', (e) => {
+safeAddEventListener('layer-arg-thiessen', 'change', (e) => {
     if (e.target.checked && !window.argLayersLoaded) window.loadARGLayers();
     if (map.getLayer('arg_thiessen_fill')) map.setLayoutProperty('arg_thiessen_fill', 'visibility', e.target.checked ? 'visible' : 'none');
 });
 
-document.getElementById('layer-satellite-ls').addEventListener('change', (e) => {
+safeAddEventListener('layer-satellite-ls', 'change', (e) => {
     const visibility = e.target.checked ? 'visible' : 'none';
     map.setLayoutProperty('satellite_polygons', 'visibility', visibility);
     map.setLayoutProperty('satellite_points', 'visibility', visibility);
@@ -899,7 +1144,7 @@ document.getElementById('locate-btn').addEventListener('click', () => {
     }
 });
 
-// Search functionality using Nominatim API
+// Search functionality with local autocompletion & web fallback
 searchInput = document.getElementById('search-input');
 searchResults = document.getElementById('search-results');
 clearBtn = document.getElementById('clear-search');
@@ -918,20 +1163,23 @@ searchInput.addEventListener('input', (e) => {
 
     clearTimeout(searchTimeout);
 
-    // Don't auto-search until user has typed enough (10 chars for GPS coords like "7.123 80.456")
-    if (query.length < 10) return;
+    // If query is too short, don't trigger auto-search yet
+    if (query.length < 3) {
+        searchResults.style.display = 'none';
+        return;
+    }
 
-    // Auto-search after 800ms of no typing (debounce)
+    // Faster debounce for local index searches (300ms)
     searchTimeout = setTimeout(() => {
         searchLocation(query);
-    }, 800);
+    }, 300);
 });
 
 // Allow immediate search when pressing Enter
 searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         e.preventDefault();
-        clearTimeout(searchTimeout); // Cancel any pending auto-search
+        clearTimeout(searchTimeout);
         const query = searchInput.value.trim();
         if (query.length >= 1) {
             searchLocation(query);
@@ -953,19 +1201,15 @@ async function searchLocation(query) {
     searchResults.style.display = 'block';
     searchResults.innerHTML = '<div class="no-results" style="color:#8b5cf6;">Searching...</div>';
 
-    // Check if query is GPS coordinates (e.g., "7.456789 80.456789" or "7.456789, 80.456789")
-    // Format: Latitude first, Longitude second (like Google Earth)
+    // 1. Check if query is GPS coordinates (Latitude first, Longitude second)
     const coordPattern = /^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$/;
     const match = query.trim().match(coordPattern);
 
     if (match) {
-        // User entered coordinates - parse as LAT, LON (Google Earth order)
         const lat = parseFloat(match[1]);
         const lon = parseFloat(match[2]);
 
-        // Validate coordinates are within Sri Lanka bounds (roughly)
         if (lon >= 79.5 && lon <= 82.0 && lat >= 5.9 && lat <= 9.9) {
-            // Valid Sri Lanka coordinates
             searchResults.style.display = 'none';
 
             map.flyTo({
@@ -988,51 +1232,106 @@ async function searchLocation(query) {
                 )
                 .addTo(map)
                 .togglePopup();
-
-            // Keep user's format: Lat, Lon
-            // REMOVED: searchInput.value reformatting to prevent overwriting user input while typing
-            // searchInput.value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
             return;
         } else {
-            // Coordinates outside Sri Lanka
             searchResults.innerHTML = '<div class="no-results" style="color:#f59e0b;">⚠️ Coordinates are outside Sri Lanka bounds</div>';
             return;
         }
     }
 
-    // Otherwise, search by name using Nominatim API
-    try {
-        // Use browser cache to reduce API calls
-        const cacheKey = `geocode_${query}`;
-        const cached = sessionStorage.getItem(cacheKey);
-
-        if (cached) {
-            const data = JSON.parse(cached);
-            displayResults(data);
-            return;
+    // 2. Search Local Index (Ref Numbers, GND name, DSD)
+    const q = query.toLowerCase().trim();
+    const localMatches = [];
+    if (localSearchIndex && localSearchIndex.length > 0) {
+        for (const item of localSearchIndex) {
+            if (item.n.toLowerCase().includes(q) || 
+                item.g.toLowerCase().includes(q) || 
+                item.d.toLowerCase().includes(q) ||
+                item.dis.toLowerCase().includes(q)) {
+                localMatches.push(item);
+                if (localMatches.length >= 8) break; // Limit local hits
+            }
         }
+    }
 
-        // Add User-Agent header (recommended by Nominatim)
-        const response = await fetch(
-            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Sri Lanka')}&limit=5&countrycodes=lk`,
-            { headers: { 'Accept-Language': 'en' } }
-        );
+    const formattedLocal = localMatches.map(m => ({
+        display_name: `${m.n} - GND: ${m.g || 'N/A'}, DSD: ${m.d || 'N/A'} (${m.dis} District)`,
+        lat: m.lat,
+        lon: m.lon,
+        isLocal: true,
+        risk: m.r
+    }));
 
-        if (!response.ok) throw new Error("Network response was not ok");
+    if (formattedLocal.length > 0) {
+        displayResults(formattedLocal);
 
-        const data = await response.json();
-
-        // Cache the results
-        if (data && data.length > 0) {
-            sessionStorage.setItem(cacheKey, JSON.stringify(data));
-            displayResults(data);
-        } else {
-            showNoResults();
+        // If query is long (>= 10 characters) and local matches are few, search Nominatim to enrich
+        if (query.length >= 10 && formattedLocal.length < 5) {
+            try {
+                const response = await fetch(
+                    `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Sri Lanka')}&limit=3&countrycodes=lk`,
+                    { headers: { 'Accept-Language': 'en' } }
+                );
+                if (response.ok) {
+                    const webData = await response.json();
+                    if (webData && webData.length > 0) {
+                        const combined = [...formattedLocal];
+                        webData.forEach(w => {
+                            const lat = parseFloat(w.lat);
+                            const lon = parseFloat(w.lon);
+                            // Avoid adding coordinates already matching a local site
+                            if (!combined.some(c => Math.abs(c.lat - lat) < 0.001 && Math.abs(c.lon - lon) < 0.001)) {
+                                combined.push({
+                                    display_name: w.display_name,
+                                    lat: lat,
+                                    lon: lon,
+                                    isLocal: false
+                                });
+                            }
+                        });
+                        displayResults(combined);
+                    }
+                }
+            } catch (err) {
+                console.warn("Nominatim fallback skipped:", err);
+            }
         }
-    } catch (error) {
-        console.error('Search error:', error);
-        searchResults.innerHTML = `<div class="no-results" style="color:#ef4444;">Error: ${error.message}. Check network.</div>`;
-        searchResults.style.display = 'block';
+        return;
+    }
+
+    // 3. Fallback to Nominatim Web Geocoding (only for 4+ character queries)
+    if (q.length >= 4) {
+        try {
+            const cacheKey = `geocode_${query}`;
+            const cached = sessionStorage.getItem(cacheKey);
+
+            if (cached) {
+                const data = JSON.parse(cached);
+                displayResults(data);
+                return;
+            }
+
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Sri Lanka')}&limit=5&countrycodes=lk`,
+                { headers: { 'Accept-Language': 'en' } }
+            );
+
+            if (!response.ok) throw new Error("Network response was not ok");
+
+            const data = await response.json();
+
+            if (data && data.length > 0) {
+                sessionStorage.setItem(cacheKey, JSON.stringify(data));
+                displayResults(data);
+            } else {
+                showNoResults();
+            }
+        } catch (error) {
+            console.error('Search error:', error);
+            searchResults.innerHTML = `<div class="no-results" style="color:#ef4444;">No results found. Check network connection.</div>`;
+        }
+    } else {
+        showNoResults();
     }
 }
 
@@ -1046,11 +1345,19 @@ function displayResults(results) {
 
         const title = document.createElement('div');
         title.className = 'result-title';
-        title.textContent = result.display_name.split(',')[0];
+        if (result.isLocal) {
+            title.innerHTML = `<span style="background: rgba(139, 92, 246, 0.2); color: #a78bfa; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; margin-right: 6px; font-weight: 600;">Local Site</span>${result.display_name.split(' - ')[0]}`;
+        } else {
+            title.textContent = result.display_name.split(',')[0];
+        }
 
         const subtitle = document.createElement('div');
         subtitle.className = 'result-subtitle';
-        subtitle.textContent = result.display_name.split(',').slice(1).join(',').trim();
+        if (result.isLocal) {
+            subtitle.textContent = result.display_name.split(' - ').slice(1).join(' - ').trim();
+        } else {
+            subtitle.textContent = result.display_name.split(',').slice(1).join(',').trim();
+        }
 
         item.appendChild(title);
         item.appendChild(subtitle);
@@ -1066,7 +1373,7 @@ function displayResults(results) {
 
             map.flyTo({
                 center: [lon, lat],
-                zoom: 12, // Reduced from 14 to avoid crashing WebGL with heavy 10k tiles
+                zoom: 14,
                 duration: 1500
             });
 
@@ -1074,19 +1381,23 @@ function displayResults(results) {
                 searchMarker.remove();
             }
 
-            searchMarker = new maplibregl.Marker({ color: '#06b6d4' })
+            const markerColor = result.isLocal ? '#8b5cf6' : '#06b6d4';
+            searchMarker = new maplibregl.Marker({ color: markerColor })
                 .setLngLat([lon, lat])
                 .setPopup(
                     new maplibregl.Popup().setHTML(
-                        `<div class="popup-title">${result.display_name.split(',')[0]}</div>
-                    <div class="popup-info">${subtitle.textContent}</div>`
+                        result.isLocal 
+                            ? `<div class="popup-title">${result.display_name.split(' - ')[0]}</div>
+                               <div class="popup-info"><b>Location:</b> ${result.display_name.split(' - ').slice(1).join(' - ')}<br><b>Risk level:</b> ${result.risk || 'N/A'}</div>`
+                            : `<div class="popup-title">${result.display_name.split(',')[0]}</div>
+                               <div class="popup-info">${subtitle.textContent}</div>`
                     )
                 )
                 .addTo(map)
                 .togglePopup();
 
             searchResults.style.display = 'none';
-            searchInput.value = result.display_name.split(',')[0];
+            searchInput.value = result.isLocal ? result.display_name.split(' - ')[0] : result.display_name.split(',')[0];
         });
 
         searchResults.appendChild(item);
@@ -1094,7 +1405,7 @@ function displayResults(results) {
 }
 
 function showNoResults() {
-    searchResults.innerHTML = '<div class="no-results">No results found in Sri Lanka</div>';
+    searchResults.innerHTML = '<div class="no-results" style="padding:16px;text-align:center;color:#ef4444;font-size:0.9rem;display:flex;flex-direction:column;align-items:center;gap:8px;"><span style="font-size:1.5rem">🔍</span>No locations found. Try checking your spelling.</div>';
     searchResults.style.display = 'block';
 }
 
@@ -1463,6 +1774,36 @@ saveLocationBtn.addEventListener('click', () => {
         showToast('Location saved!', 'success');
     }
 });
+
+// Share View functionality
+const shareBtn = document.getElementById('share-btn');
+if (shareBtn) {
+    shareBtn.addEventListener('click', () => {
+        const url = window.location.href;
+        navigator.clipboard.writeText(url).then(() => {
+            showToast('✅ Link copied to clipboard! Share this exact view.', 'success');
+        }).catch(err => {
+            console.error('Failed to copy link: ', err);
+            showToast('❌ Failed to copy link.', 'error');
+        });
+    });
+}
+
+// Fullscreen functionality
+const fullscreenBtn = document.getElementById('fullscreen-btn');
+if (fullscreenBtn) {
+    fullscreenBtn.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => {
+                showToast('❌ Fullscreen not supported.', 'error');
+            });
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+    });
+}
 // =============================================
 // COMPASS FUNCTIONALITY  
 // =============================================
@@ -1618,3 +1959,321 @@ document.addEventListener('touchstart', (e) => {
         }
     }
 }, {passive: true});
+
+// =============================================
+// EXECUTIVE SUMMARY DASHBOARD & LOCAL SEARCH LOGIC
+// =============================================
+async function loadDashboardAndSearchData() {
+    try {
+        const cachedIndex = sessionStorage.getItem('search_index_v1');
+        const fetchPromises = [fetch(`${DATA_BASE_URL}/summary.json`)];
+        if (!cachedIndex) fetchPromises.push(fetch(`${DATA_BASE_URL}/search_index.json`));
+
+        const responses = await Promise.all(fetchPromises);
+        
+        if (responses[0] && responses[0].ok) {
+            summaryStats = await responses[0].json();
+            populateDashboard(summaryStats);
+        }
+        
+        if (cachedIndex) {
+            localSearchIndex = JSON.parse(cachedIndex);
+            updateViewportStats();
+        } else if (responses[1] && responses[1].ok) {
+            localSearchIndex = await responses[1].json();
+            try { sessionStorage.setItem('search_index_v1', JSON.stringify(localSearchIndex)); } catch(e) {}
+            updateViewportStats();
+        }
+    } catch (e) {
+        console.error("Error loading dashboard/search data:", e);
+    }
+}
+
+function populateDashboard(data) {
+    // Populate global KPIs from summary.json (used before search_index loads)
+    const kpiMapped = document.getElementById('kpi-mapped');
+    const kpiHr     = document.getElementById('kpi-hr');
+    const kpiMr     = document.getElementById('kpi-mr');
+    const kpiLr     = document.getElementById('kpi-lr');
+    if (kpiMapped) kpiMapped.innerHTML = `${data.total_mapped.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
+    if (kpiHr)     kpiHr.innerHTML     = `${data.total_hr.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
+    // MR/LR not in summary.json — leave as — until viewport loads
+    // Table will be populated by updateViewportStats once search_index is ready
+    const tbody = document.getElementById('district-tbody');
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#475569;padding:12px 0;">Pan or zoom map to see incidents</td></tr>';
+    }
+    const footer = document.getElementById('dashboard-footer');
+    if (footer) footer.textContent = `Dataset: ${data.total_mapped.toLocaleString()} inspection records`;
+}
+
+
+function flyToDistrict(districtName) {
+    if (!localSearchIndex || localSearchIndex.length === 0) return;
+    const points = localSearchIndex.filter(p => p.dis.toLowerCase() === districtName.toLowerCase());
+    if (points.length === 0) return;
+    
+    let sumLat = 0, sumLon = 0;
+    points.forEach(p => {
+        sumLat += p.lat;
+        sumLon += p.lon;
+    });
+    const avgLat = sumLat / points.length;
+    const avgLon = sumLon / points.length;
+    
+    map.flyTo({
+        center: [avgLon, avgLat],
+        zoom: 10,
+        duration: 1500
+    });
+    showToast(`Flying to ${districtName} District`, 'success');
+}
+
+// Collapsible widget hook
+const dashboardPanel = document.getElementById('dashboard-panel');
+const dashboardToggle = document.getElementById('dashboard-toggle');
+if (dashboardToggle && dashboardPanel) {
+    dashboardToggle.addEventListener('click', () => {
+        dashboardPanel.classList.toggle('collapsed');
+        const btn = dashboardToggle.querySelector('.dashboard-toggle-btn');
+        if (btn) {
+            btn.textContent = dashboardPanel.classList.contains('collapsed') ? '▼' : '▲';
+        }
+    });
+}
+
+// =====================================================
+// EXECUTIVE SUMMARY — LIVE INCIDENT AUTO-UPDATE
+// Fires on every map pan/zoom + on data load
+// =====================================================
+
+// Risk classification helper
+function classifyRisk(r) {
+    const risk = (r || '').toString().toUpperCase().trim();
+    if (risk.includes('HR1') || risk.includes('HR2') || risk.includes('HR3') ||
+        risk.includes('P1')  || risk.includes('P2')  || risk.includes('P3')  ||
+        risk.includes('HR') || risk.includes('HIGH')) return 'HR';
+    if (risk.includes('MR') || risk.includes('MEDIUM') || risk.includes('MOD')) return 'MR';
+    if (risk.includes('LR') || risk.includes('LOW')) return 'LR';
+    return 'NONE';
+}
+
+// Risk badge HTML
+function riskBadge(r) {
+    const cls = classifyRisk(r);
+    const styles = {
+        HR:   'background:rgba(239,68,68,0.2);   color:#f87171; border:1px solid rgba(239,68,68,0.5);',
+        MR:   'background:rgba(234,179,8,0.2);   color:#fbbf24; border:1px solid rgba(234,179,8,0.5);',
+        LR:   'background:rgba(34,197,94,0.2);   color:#4ade80; border:1px solid rgba(34,197,94,0.5);',
+        NONE: 'background:rgba(71,85,105,0.2);   color:#94a3b8; border:1px solid rgba(71,85,105,0.4);',
+    };
+    const labels = { HR: r || 'HR', MR: r || 'MR', LR: r || 'LR', NONE: r || '—' };
+    return `<span style="font-size:0.7rem;font-weight:700;padding:2px 7px;border-radius:12px;${styles[cls]}">${labels[cls]}</span>`;
+}
+
+// Animate number change
+function animateKpi(el, newVal) {
+    if (!el) return;
+    const current = parseInt(el.dataset.val || '0');
+    if (current === newVal) return;
+    el.dataset.val = newVal;
+    const duration = 400;
+    const start = performance.now();
+    const from = current;
+    function step(now) {
+        const t = Math.min((now - start) / duration, 1);
+        const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+        const val = Math.round(from + (newVal - from) * eased);
+        el.innerHTML = `${val.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">in view</span>`;
+        if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+}
+
+function updateViewportStats() {
+    const kpiMapped = document.getElementById('kpi-mapped');
+    const kpiHr     = document.getElementById('kpi-hr');
+    const kpiMr     = document.getElementById('kpi-mr');
+    const kpiLr     = document.getElementById('kpi-lr');
+    const tbody      = document.getElementById('district-tbody');
+    const footer     = document.getElementById('dashboard-footer');
+    const barHr      = document.getElementById('risk-bar-hr');
+    const barMr      = document.getElementById('risk-bar-mr');
+    const barLr      = document.getElementById('risk-bar-lr');
+    const barNone    = document.getElementById('risk-bar-none');
+    const riskBarCont= document.getElementById('risk-bar-container');
+
+    // Fallback to global summary if index not loaded yet
+    if (!localSearchIndex || localSearchIndex.length === 0) {
+        if (summaryStats) {
+            if (kpiMapped) kpiMapped.innerHTML = summaryStats.total_mapped.toLocaleString();
+            if (kpiHr)     kpiHr.innerHTML     = summaryStats.total_hr.toLocaleString();
+        }
+        return;
+    }
+
+    const bounds = map.getBounds();
+    const west   = bounds.getWest();
+    const east   = bounds.getEast();
+    const north  = bounds.getNorth();
+    const south  = bounds.getSouth();
+
+    let totalMapped = 0, hrCount = 0, mrCount = 0, lrCount = 0, noneCount = 0;
+    const visibleItems = [];
+
+    for (let i = 0; i < localSearchIndex.length; i++) {
+        const item = localSearchIndex[i];
+        const lng  = item.lon;
+        const lat  = item.lat;
+        if (lng >= west && lng <= east && lat >= south && lat <= north) {
+            totalMapped++;
+            const cls = classifyRisk(item.r);
+            if      (cls === 'HR')   hrCount++;
+            else if (cls === 'MR')   mrCount++;
+            else if (cls === 'LR')   lrCount++;
+            else                     noneCount++;
+            visibleItems.push(item);
+        }
+    }
+
+    // Update KPI cards with animation
+    animateKpi(kpiMapped, totalMapped);
+    animateKpi(kpiHr,     hrCount);
+    animateKpi(kpiMr,     mrCount);
+    animateKpi(kpiLr,     lrCount);
+
+    // Update proportional risk bar
+    if (riskBarCont && totalMapped > 0) {
+        riskBarCont.style.display = 'flex';
+        const pct = (n) => (n / totalMapped * 100).toFixed(1) + '%';
+        if (barHr)   barHr.style.width   = pct(hrCount);
+        if (barMr)   barMr.style.width   = pct(mrCount);
+        if (barLr)   barLr.style.width   = pct(lrCount);
+        if (barNone) barNone.style.width = pct(noneCount);
+    }
+
+    // Sort by risk priority: HR first, then MR, LR, None
+    const riskOrder = { HR: 0, MR: 1, LR: 2, NONE: 3 };
+    visibleItems.sort((a, b) => riskOrder[classifyRisk(a.r)] - riskOrder[classifyRisk(b.r)]);
+
+    // Populate incident table (top 20 in view)
+    if (tbody) {
+        if (visibleItems.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#475569;padding:12px 0;">No incidents in current view</td></tr>';
+        } else {
+            const top = visibleItems.slice(0, 20);
+            tbody.innerHTML = top.map(item => {
+                const name    = (item.n || '—').length > 22 ? item.n.slice(0, 22) + '…' : (item.n || '—');
+                const locStr  = `${item.lat.toFixed(4)}, ${item.lon.toFixed(4)}`;
+                return `<tr style="cursor:pointer;" onclick="map.flyTo({center:[${item.lon},${item.lat}],zoom:14,duration:1000});showToast('Flying to: ${(item.n||'').replace(/'/g,'')}','success')">
+                    <td style="font-size:0.7rem;font-family:monospace;color:#e2e8f0;">${name}</td>
+                    <td>${riskBadge(item.r)}</td>
+                    <td style="font-size:0.65rem;color:#64748b;">${locStr}</td>
+                </tr>`;
+            }).join('');
+
+            if (visibleItems.length > 20) {
+                tbody.innerHTML += `<tr><td colspan="3" style="text-align:center;color:#475569;font-size:0.65rem;padding:6px 0;">+ ${(visibleItems.length - 20).toLocaleString()} more — zoom in to narrow results</td></tr>`;
+            }
+        }
+    }
+
+    // Footer timestamp
+    if (footer) {
+        const now = new Date();
+        footer.textContent = `Updated ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')} · ${totalMapped.toLocaleString()} total`;
+    }
+}
+
+// Register map viewport moveend listener for statistics
+map.on('moveend', updateViewportStats);
+
+
+// =====================================================
+// MOBILE FAB TOUCH TOOLTIPS
+// Show a brief label when FABs are tapped on mobile
+// =====================================================
+(function() {
+    const fabDefs = [
+        { id: 'locate-btn',   label: 'Find My Location' },
+        { id: 'bookmark-btn', label: 'Bookmarks' },
+        { id: 'measure-btn',  label: 'Measure Distance' },
+        { id: 'view3d-btn',   label: '3D Terrain View' },
+        { id: 'share-btn',    label: 'Share Map View' },
+        { id: 'fullscreen-btn',label: 'Toggle Fullscreen' }
+    ];
+
+    // Create shared tooltip element
+    const tooltip = document.createElement('div');
+    tooltip.className = 'fab-touch-label';
+    document.body.appendChild(tooltip);
+
+    let hideTimer = null;
+
+    fabDefs.forEach(({ id, label }) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.addEventListener('touchstart', (e) => {
+            // Only on mobile (touch device)
+            const rect = btn.getBoundingClientRect();
+            tooltip.textContent = label;
+            tooltip.style.top = (rect.top + rect.height / 2 - 14) + 'px';
+            tooltip.classList.add('show');
+
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => {
+                tooltip.classList.remove('show');
+            }, 1500);
+        }, { passive: true });
+    });
+})();
+
+// =====================================================
+// LAYER LOADING SPINNER
+// Show a small spinner on the toggle label while a
+// lazy layer is being loaded for the first time
+// =====================================================
+(function() {
+    const lazyLayers = [
+        { toggleId: 'layer-inspection',    loaderFn: () => window.loadInspection && window.loadInspection(),    layerId: 'inspection_layer' },
+        { toggleId: 'layer-arg-locations', loaderFn: () => window.loadArgLocations && window.loadArgLocations(), layerId: 'arg_locations_layer' },
+        { toggleId: 'layer-arg-thiessen',  loaderFn: () => window.loadArgThiessen && window.loadArgThiessen(),  layerId: 'arg_thiessen_fill' },
+        { toggleId: 'layer-tiz',           loaderFn: () => window.loadTiz && window.loadTiz(),                  layerId: 'tiz_fill' },
+        { toggleId: 'layer-tiz-50k',       loaderFn: () => window.loadTiz50k && window.loadTiz50k(),            layerId: 'tiz_50k_fill' },
+        { toggleId: 'layer-satellite-ls',  loaderFn: () => window.loadSatelliteLs && window.loadSatelliteLs(),  layerId: 'satellite_ls_fill' },
+        { toggleId: 'layer-contours',      loaderFn: () => window.loadContours && window.loadContours(),        layerId: 'contours_line' },
+        { toggleId: 'layer-released-areas',loaderFn: () => window.loadReleasedAreas && window.loadReleasedAreas(), layerId: 'released_areas_fill' },
+    ];
+
+    lazyLayers.forEach(({ toggleId, loaderFn, layerId }) => {
+        const checkbox = document.getElementById(toggleId);
+        if (!checkbox) return;
+
+        checkbox.addEventListener('change', function() {
+            if (!this.checked) return;
+            // Only add spinner if the layer isn't loaded yet
+            if (map.getLayer(layerId)) return;
+
+            const label = this.closest('.layer-toggle')?.querySelector('.layer-label');
+            if (!label) return;
+
+            // Add spinner
+            const spinner = document.createElement('span');
+            spinner.className = 'layer-loading-spinner';
+            spinner.id = 'spinner-' + toggleId;
+            label.appendChild(spinner);
+
+            // Poll until layer exists (max 15s)
+            let attempts = 0;
+            const poll = setInterval(() => {
+                attempts++;
+                if (map.getLayer(layerId) || attempts > 150) {
+                    clearInterval(poll);
+                    const existing = label.querySelector('.layer-loading-spinner');
+                    if (existing) existing.remove();
+                }
+            }, 100);
+        });
+    });
+})();
+

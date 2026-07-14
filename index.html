@@ -4,7 +4,7 @@
 <head>
     <script>
         // Force aggressive cache purge for returning users
-        const APP_VERSION = "2.4"; 
+        const APP_VERSION = "2.5"; 
         if (localStorage.getItem('lhmpVersion') !== APP_VERSION) {
             localStorage.setItem('lhmpVersion', APP_VERSION);
             if ('serviceWorker' in navigator) {
@@ -31,9 +31,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev" crossorigin>
+    
+    <!-- Preload Critical Resources -->
+    <link rel="preload" href="maplibre-gl.js" as="script">
+    <link rel="preload" href="maplibre-gl.css" as="style">
+    <link rel="preload" href="style.css?v=1.5" as="style">
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="maplibre-gl.css" rel="stylesheet" />
-    <link href="style.css?v=1.4" rel="stylesheet" />
+    <link href="style.css?v=1.5" rel="stylesheet" />
 </head>
 
 <body>
@@ -53,6 +59,11 @@
 
     <!-- Search Box -->
     <div class="search-container">
+        <div class="app-title-bar">
+            <span class="app-title-icon">🏔️</span>
+            <span class="app-title-text">Landslide Hazard Zonation Map</span>
+            <span class="app-title-badge">Sri Lanka</span>
+        </div>
         <div class="search-box">
             <div class="search-input-wrapper">
                 <span class="search-icon">
@@ -66,6 +77,57 @@
                 <button id="clear-search">×</button>
             </div>
             <div id="search-results"></div>
+        </div>
+    </div>
+    <!-- Executive Summary Dashboard -->
+    <div class="dashboard-panel collapsed" id="dashboard-panel">
+        <div class="dashboard-header" id="dashboard-toggle">
+            <h3>📊 Executive Summary</h3>
+            <button class="dashboard-toggle-btn">▼</button>
+        </div>
+        <div class="dashboard-content">
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-title">📍 In View</div>
+                    <div class="kpi-value" id="kpi-mapped">—</div>
+                </div>
+                <div class="kpi-card" style="border-color: rgba(239, 68, 68, 0.4);">
+                    <div class="kpi-title">🔴 High Risk</div>
+                    <div class="kpi-value" id="kpi-hr" style="color: #f87171;">—</div>
+                </div>
+                <div class="kpi-card" style="border-color: rgba(234, 179, 8, 0.4);">
+                    <div class="kpi-title">🟡 Medium Risk</div>
+                    <div class="kpi-value" id="kpi-mr" style="color: #fbbf24;">—</div>
+                </div>
+                <div class="kpi-card" style="border-color: rgba(34, 197, 94, 0.4);">
+                    <div class="kpi-title">🟢 Low Risk</div>
+                    <div class="kpi-value" id="kpi-lr" style="color: #4ade80;">—</div>
+                </div>
+            </div>
+            <!-- Risk breakdown mini-bar -->
+            <div id="risk-bar-container" style="display:none; height:8px; border-radius:6px; overflow:hidden; display:flex; gap:1px; margin-top:-4px;">
+                <div id="risk-bar-hr" style="background:#ef4444; height:100%; transition:width 0.4s ease; min-width:0;"></div>
+                <div id="risk-bar-mr" style="background:#eab308; height:100%; transition:width 0.4s ease; min-width:0;"></div>
+                <div id="risk-bar-lr" style="background:#22c55e; height:100%; transition:width 0.4s ease; min-width:0;"></div>
+                <div id="risk-bar-none" style="background:#475569; height:100%; transition:width 0.4s ease; min-width:0;"></div>
+            </div>
+            <div class="district-table-wrapper">
+                <table class="district-table">
+                    <thead>
+                        <tr>
+                            <th>Zone / ID</th>
+                            <th>Risk</th>
+                            <th>Location</th>
+                        </tr>
+                    </thead>
+                    <tbody id="district-tbody">
+                        <tr>
+                            <td colspan="3" style="text-align: center; color: #94a3b8; padding: 12px 0;">Pan map to see incidents</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="dashboard-footer" style="font-size:0.65rem; color:#475569; text-align:right; margin-top:4px;">—</div>
         </div>
     </div>
 
@@ -210,6 +272,23 @@
                             <span class="slider"></span>
                         </label>
                     </div>
+
+
+
+                    <div class="layer-toggle">
+                        <span class="layer-label" style="display:flex; align-items:center; gap:6px;">
+                            <span style="width:10px; height:10px; background:rgba(168, 85, 247, 0.25); border:1px solid #a855f7; display:inline-block; border-radius: 2px;"></span>
+                            Released Areas (IRS/LI)
+                        </span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="layer-released-areas">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="opacity-control">
+                        <span class="opacity-label">Opacity</span>
+                        <input type="range" id="opacity-released-areas" min="0" max="100" value="65">
+                    </div>
                 </div>
             </div>
 
@@ -255,6 +334,26 @@
                 <path d="m8 3 4 8 5-5 5 15H2L8 3z"></path>
             </svg>
             <span class="fab-tooltip">3D Terrain View</span>
+        </button>
+        <button id="share-btn" class="fab-btn" title="Share View"
+            style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            </svg>
+            <span class="fab-tooltip">Share Map View</span>
+        </button>
+        <button id="fullscreen-btn" class="fab-btn" title="Toggle Fullscreen"
+            style="background: linear-gradient(135deg, #64748b, #475569);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+            </svg>
+            <span class="fab-tooltip">Toggle Fullscreen</span>
         </button>
 
     </div>
@@ -323,14 +422,14 @@
                 </div>
                 
                 <div id="leg-item-base-hazard">
-                    <i style="background: rgb(99, 0, 0)"></i> Landslide most likely to occur<br>
-                    <i style="background: rgb(230, 0, 0)"></i> Landslides have been occurred in the Past<br>
-                    <i style="background: rgb(254, 172, 0)"></i> Landslide are to be expected<br>
-                    <i style="background: rgb(254, 244, 141)"></i> Modest level of landslide hazard exist<br>
-                    <i style="background: rgb(165, 254, 164)"></i> Landslides not likely to occur<br>
-                    <i style="background: rgb(128, 128, 128)"></i> Not mapped<br>
-                    <i style="background: rgb(165, 0, 230)"></i> Subsidence & Rockfall<br>
-                    <i style="background: rgb(115, 223, 255)"></i> Water Bodies<br>
+                    <div class="legend-item-row"><i style="background: rgb(99, 0, 0)"></i> Landslide most likely to occur</div>
+                    <div class="legend-item-row"><i style="background: rgb(230, 0, 0)"></i> Landslides have been occurred in the Past</div>
+                    <div class="legend-item-row"><i style="background: rgb(254, 172, 0)"></i> Landslide are to be expected</div>
+                    <div class="legend-item-row"><i style="background: rgb(254, 244, 141)"></i> Modest level of landslide hazard exist</div>
+                    <div class="legend-item-row"><i style="background: rgb(165, 254, 164)"></i> Landslides not likely to occur</div>
+                    <div class="legend-item-row"><i style="background: rgb(128, 128, 128)"></i> Not mapped</div>
+                    <div class="legend-item-row"><i style="background: rgb(165, 0, 230)"></i> Subsidence & Rockfall</div>
+                    <div class="legend-item-row"><i style="background: rgb(115, 223, 255)"></i> Water Bodies</div>
                 </div>
             </div>
 
@@ -388,7 +487,7 @@
 
     <script src="maplibre-gl.js"></script>
     <script src="pmtiles.js"></script>
-    <script src="app.js?v=2.4"></script>
+    <script src="app.js?v=3.0"></script>
 </body>
 
 </html>

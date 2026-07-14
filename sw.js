@@ -1,4 +1,4 @@
-const CACHE_NAME = 'landslide-map-v31';
+const CACHE_NAME = 'landslide-map-v37';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -66,7 +66,7 @@ self.addEventListener('fetch', (event) => {
             })
             .catch(() => {
                 // If offline or network fails, gracefully fallback to the cached version
-                return caches.match(event.request);
+                return caches.match(event.request, { ignoreSearch: true });
             })
     );
 });
