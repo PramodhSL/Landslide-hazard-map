@@ -4,7 +4,7 @@
 <head>
     <script>
         // Force aggressive cache purge for returning users
-        const APP_VERSION = "2.5"; 
+        const APP_VERSION = "v38";
         if (localStorage.getItem('lhmpVersion') !== APP_VERSION) {
             localStorage.setItem('lhmpVersion', APP_VERSION);
             if ('serviceWorker' in navigator) {
@@ -17,7 +17,7 @@
         }
     </script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#8b5cf6">
@@ -275,20 +275,7 @@
 
 
 
-                    <div class="layer-toggle">
-                        <span class="layer-label" style="display:flex; align-items:center; gap:6px;">
-                            <span style="width:10px; height:10px; background:rgba(168, 85, 247, 0.25); border:1px solid #a855f7; display:inline-block; border-radius: 2px;"></span>
-                            Released Areas (IRS/LI)
-                        </span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="layer-released-areas">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="opacity-control">
-                        <span class="opacity-label">Opacity</span>
-                        <input type="range" id="opacity-released-areas" min="0" max="100" value="65">
-                    </div>
+
                 </div>
             </div>
 
@@ -388,7 +375,7 @@
         style="display:none; color: #e2e8f0; font-size: 0.9rem; text-align: center; background: rgba(15,23,42,0.9); padding: 12px; border-radius: 12px; border: 1px solid rgba(16,185,129,0.4); box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
         <div style="font-weight:600; margin-bottom:4px;">Distance</div>
         <div style="font-size:1.2rem; margin-bottom:8px;"><span id="distance-value">0.00</span> <span
-                style="font-size:0.9rem; color:#94a3b8;">km</span></div>
+                id="measure-unit" style="font-size:0.9rem; color:#94a3b8;">km</span></div>
         <button id="clear-measure"
             style="display:block; width:100%; padding: 6px; background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#e2e8f0; cursor:pointer; font-size:0.85rem; transition:background 0.2s;">Clear</button>
     </div>

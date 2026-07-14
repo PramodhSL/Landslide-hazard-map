@@ -11,34 +11,6 @@ const DATA_BASE_URL = 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev';
 let localSearchIndex = [];
 let summaryStats = null;
 
-// Toast Notification System
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-
-    let icon = 'ℹ️';
-    if (type === 'success') icon = '✅';
-    if (type === 'error') icon = '⚠️';
-
-    toast.className = 'toast';
-    toast.innerHTML = `<span class="toast-icon">${icon}</span> ${message}`;
-
-    container.appendChild(toast);
-
-    // Trigger animation
-    requestAnimationFrame(() => {
-        toast.classList.add('show');
-    });
-
-    // Auto hide
-    setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => {
-            toast.remove();
-        }, 300);
-    }, 3000);
-}
-
 
 let protocol = new pmtiles.Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
@@ -417,6 +389,7 @@ map.on('load', () => {
             'type': 'fill',
             'source': 'tiz_zones',
             'source-layer': 'tiz_layer',
+            'minzoom': 12,
             'paint': {
                 'fill-color': [
                     'match',
@@ -523,14 +496,7 @@ map.on('load', () => {
         }, 'z-index-6-top');
     };
 
-    // 4. CONTOURS & SATELLITE (Grouped logic where appropriate)
-    map.addSource('satellite_landslides', {
-        type: 'vector',
-        url: `pmtiles://${DATA_BASE_URL}/satellite_landslides.pmtiles`,
-        attribution: 'Human Settlement & Planning Division'
-    });
-    // Satellite layers can stay here as they are small, or moved. Getting to complex to move everything.
-    // Let's stick to the requested ones: Reports, Red, Yellow. Contours also requested.
+    // 4. CONTOURS & SATELLITE LAYERS
 
     // Contours Lazy
     window.contoursLoaded = false;
@@ -548,6 +514,7 @@ map.on('load', () => {
         map.addLayer({
             'id': 'contours_line',
             'type': 'line', 'source': 'contours', 'source-layer': 'Contour_20M',
+            'minzoom': 11,
             'paint': {
                 'line-color': '#57534e', 'line-width': 1, 'line-opacity': 0.6
             },
@@ -556,52 +523,59 @@ map.on('load', () => {
     };
 
 
-    // Satellite Landslides (Polygons)
-    map.addLayer({
-        'id': 'satellite_polygons',
-        'type': 'line',
-        'source': 'satellite_landslides',
-        'source-layer': 'satellite_landslides',
-        'filter': ['==', ['get', 'type'], 'landslide_polygon'],
-        'paint': {
-            'line-color': '#f97316', // Orange
-            'line-width': 2
-        },
-        'layout': { 'visibility': 'none' }
-    });
+    // 5. SATELLITE LANDSLIDES (Lazy — only fetched when the toggle is first turned ON)
+    window.satelliteLsLoaded = false;
+    window.loadSatelliteLs = function () {
+        if (window.satelliteLsLoaded) return;
+        window.satelliteLsLoaded = true;
 
-    // Satellite Landslides (Points)
-    map.addLayer({
-        'id': 'satellite_points',
-        'type': 'circle',
-        'source': 'satellite_landslides',
-        'source-layer': 'satellite_landslides',
-        'filter': ['==', ['get', 'type'], 'incident_point'],
-        'paint': {
-            'circle-radius': 5,
-            'circle-color': '#f97316', // Orange
-            'circle-stroke-width': 1,
-            'circle-stroke-color': '#ffffff'
-        },
-        'layout': { 'visibility': 'none' }
-    });
+        map.addSource('satellite_landslides', {
+            type: 'vector',
+            url: `pmtiles://${DATA_BASE_URL}/satellite_landslides.pmtiles`,
+            attribution: 'Human Settlement & Planning Division'
+        });
+
+        map.addLayer({
+            'id': 'satellite_polygons',
+            'type': 'line',
+            'source': 'satellite_landslides',
+            'source-layer': 'satellite_landslides',
+            'filter': ['==', ['get', 'type'], 'landslide_polygon'],
+            'paint': { 'line-color': '#f97316', 'line-width': 2 },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-5-overlays');
+
+        map.addLayer({
+            'id': 'satellite_points',
+            'type': 'circle',
+            'source': 'satellite_landslides',
+            'source-layer': 'satellite_landslides',
+            'filter': ['==', ['get', 'type'], 'incident_point'],
+            'paint': {
+                'circle-radius': 5,
+                'circle-color': '#f97316',
+                'circle-stroke-width': 1,
+                'circle-stroke-color': '#ffffff'
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-5-overlays');
+
+        map.on('click', 'satellite_points', showPopup);
+        map.on('click', 'satellite_polygons', showPopup);
+        map.on('mouseenter', 'satellite_points', () => map.getCanvas().style.cursor = 'pointer');
+        map.on('mouseleave', 'satellite_points', () => map.getCanvas().style.cursor = '');
+        map.on('mouseenter', 'satellite_polygons', () => map.getCanvas().style.cursor = 'pointer');
+        map.on('mouseleave', 'satellite_polygons', () => map.getCanvas().style.cursor = '');
+    };
+
 
     map.on('click', 'hazard_50k_fill', showPopup);
-    map.on('click', 'inspection_points', showPopup);
     map.on('click', 'arg_locations_points', showPopup);
-    map.on('click', 'satellite_points', showPopup);
-    map.on('click', 'satellite_polygons', showPopup);
 
     map.on('mouseenter', 'hazard_50k_fill', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'hazard_50k_fill', () => map.getCanvas().style.cursor = '');
-    map.on('mouseenter', 'inspection_points', () => map.getCanvas().style.cursor = 'pointer');
-    map.on('mouseleave', 'inspection_points', () => map.getCanvas().style.cursor = '');
     map.on('mouseenter', 'arg_locations_points', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'arg_locations_points', () => map.getCanvas().style.cursor = '');
-    map.on('mouseenter', 'satellite_points', () => map.getCanvas().style.cursor = 'pointer');
-    map.on('mouseleave', 'satellite_points', () => map.getCanvas().style.cursor = '');
-    map.on('mouseenter', 'satellite_polygons', () => map.getCanvas().style.cursor = 'pointer');
-    map.on('mouseleave', 'satellite_polygons', () => map.getCanvas().style.cursor = '');
 
     // Fetch summary.json and search_index.json
     loadDashboardAndSearchData();
@@ -612,6 +586,16 @@ map.on('load', () => {
         const loader = document.getElementById('loading-indicator');
         if (loader) loader.classList.remove('active');
     }, 500);
+
+    // Notify user if a data source fails to load
+    map.on('error', (e) => {
+        const msg = (e.error && e.error.message) ? e.error.message : '';
+        if (msg.includes('inspection_reports')) {
+            showToast('\u26a0\ufe0f Inspection Reports failed to load. Check R2 bucket.', 'error');
+        } else if (msg.includes('404')) {
+            console.warn('Map source error (404):', msg);
+        }
+    });
 });
 
 // FAILSAFE: Force remove loader after 10 seconds if it gets stuck
@@ -841,9 +825,10 @@ safeAddEventListener('layer-arg-thiessen', 'change', (e) => {
 });
 
 safeAddEventListener('layer-satellite-ls', 'change', (e) => {
+    if (e.target.checked && !window.satelliteLsLoaded) window.loadSatelliteLs();
     const visibility = e.target.checked ? 'visible' : 'none';
-    map.setLayoutProperty('satellite_polygons', 'visibility', visibility);
-    map.setLayoutProperty('satellite_points', 'visibility', visibility);
+    if (map.getLayer('satellite_polygons')) map.setLayoutProperty('satellite_polygons', 'visibility', visibility);
+    if (map.getLayer('satellite_points')) map.setLayoutProperty('satellite_points', 'visibility', visibility);
 });
 
 
@@ -927,12 +912,7 @@ function ensureLayersLoaded(layers, callback) {
                 map.addSource(item.source, item.config);
             }
             if (item.layer) {
-                // Dynamic layer placement
-                if (item.layer.id === 'hillshade') {
-                    map.addLayer(item.layer, 'z-index-2-hazards_50k');
-                } else {
-                    map.addLayer(item.layer, 'z-index-2-hazards_50k');
-                }
+                map.addLayer(item.layer, 'z-index-2-hazards_50k');
             }
         });
 
@@ -1108,6 +1088,8 @@ searchInput.addEventListener('input', (e) => {
 
     if (query.length > 0) {
         clearBtn.style.display = 'block';
+        // Lazily load search index on first keystroke
+        if (localSearchIndex.length === 0) loadSearchIndex();
     } else {
         clearBtn.style.display = 'none';
         searchResults.style.display = 'none';
@@ -1364,6 +1346,8 @@ function showNoResults() {
 
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.search-box')) {
+        // On mobile, only close results when user explicitly clicks the map canvas (not toolbar/controls)
+        if (window.innerWidth <= 768 && !e.target.closest('#map canvas')) return;
         searchResults.style.display = 'none';
     }
 });
@@ -1413,6 +1397,21 @@ controlsToggle.addEventListener('click', () => {
         localStorage.setItem('controlsCollapsed', 'false');
     }
 });
+
+// Swipe-down-to-dismiss: mobile controls panel
+(function () {
+    let _swipeStartY = 0;
+    controlsPanel.addEventListener('touchstart', (e) => {
+        _swipeStartY = e.touches[0].clientY;
+    }, { passive: true });
+    controlsPanel.addEventListener('touchend', (e) => {
+        const dy = e.changedTouches[0].clientY - _swipeStartY;
+        if (dy > 60 && window.innerWidth <= 768) {
+            controlsPanel.classList.add('collapsed');
+            localStorage.setItem('controlsCollapsed', 'true');
+        }
+    }, { passive: true });
+})();
 
 
 // PWA Installation Logic
@@ -1625,13 +1624,20 @@ map.on('click', (e) => {
         });
     }
 
-    // Calculate total distance
+    // Calculate total distance with auto km/m unit switching
     if (measurePoints.length > 1) {
         let totalDist = 0;
         for (let i = 0; i < measurePoints.length - 1; i++) {
-            totalDist += getDistance(measurePoints[i],
-                measurePoints[i + 1]);
-        } distanceValue.textContent = totalDist.toFixed(2);
+            totalDist += getDistance(measurePoints[i], measurePoints[i + 1]);
+        }
+        const unitEl = document.getElementById('measure-unit');
+        if (totalDist < 1) {
+            distanceValue.textContent = (totalDist * 1000).toFixed(0);
+            if (unitEl) unitEl.textContent = 'm';
+        } else {
+            distanceValue.textContent = totalDist.toFixed(2);
+            if (unitEl) unitEl.textContent = 'km';
+        }
     }
 });
 
@@ -1718,14 +1724,40 @@ closeBookmarksBtn.addEventListener('click', () => { bookmarksPanel.style.display
 
 saveLocationBtn.addEventListener('click', () => {
     const center = map.getCenter();
-    const name = prompt('Enter a name for this location:', 'Location ' + (getBookmarks().length + 1));
-    if (name) {
+    const defaultName = 'Location ' + (getBookmarks().length + 1);
+
+    // Use inline input instead of native browser prompt()
+    const existing = document.getElementById('bookmark-name-row');
+    if (existing) existing.remove();
+
+    const row = document.createElement('div');
+    row.id = 'bookmark-name-row';
+    row.style.cssText = 'display:flex;gap:6px;padding:8px 12px 4px;';
+    row.innerHTML = `
+        <input id="bm-name-input" type="text" value="${defaultName}"
+            style="flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(139,92,246,0.4);border-radius:8px;color:#e2e8f0;padding:6px 10px;font-size:0.82rem;outline:none;"
+            placeholder="Enter location name" />
+        <button id="bm-save-confirm"
+            style="background:linear-gradient(135deg,#8b5cf6,#06b6d4);border:none;border-radius:8px;color:#fff;padding:6px 12px;cursor:pointer;font-size:0.82rem;font-weight:600;">Save</button>`;
+
+    const panel = document.getElementById('bookmarks-panel');
+    const footer = panel.querySelector('[style*="border-top"]');
+    if (footer) footer.before(row); else panel.appendChild(row);
+
+    const input = row.querySelector('#bm-name-input');
+    input.focus(); input.select();
+
+    const doSave = () => {
+        const name = input.value.trim() || defaultName;
         const bookmarks = getBookmarks();
-        bookmarks.push({ name: name, lat: center.lat, lon: center.lng, zoom: map.getZoom(), timestamp: Date.now() });
+        bookmarks.push({ name, lat: center.lat, lon: center.lng, zoom: map.getZoom(), timestamp: Date.now() });
         saveBookmarks(bookmarks);
+        row.remove();
         renderBookmarks();
-        showToast('Location saved!', 'success');
-    }
+        showToast('\u2705 Location saved!', 'success');
+    };
+    row.querySelector('#bm-save-confirm').addEventListener('click', doSave);
+    input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') doSave(); });
 });
 
 // Share View functionality
@@ -1859,21 +1891,25 @@ function showToast(message, type = 'info') {
     if (!toast) {
         toast = document.createElement('div');
         toast.id = 'app-toast';
-        // Positioned perfectly in center of screen
-        toast.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%) scale(0.9); background:rgba(15,23,42,0.95); backdrop-filter:blur(15px); color:#fff; padding:20px 28px; border-radius:12px; z-index:9999; box-shadow:0 15px 40px rgba(0,0,0,0.6); border:1px solid rgba(239,68,68,0.5); transition:transform 0.4s cubic-bezier(0.175,0.885,0.32,1.275), opacity 0.4s; opacity:0; pointer-events:none; font-weight:400; text-align:center; width:90vw; max-width:450px; font-size:0.85rem; line-height:1.5;';
+        toast.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) scale(0.9); background:rgba(15,23,42,0.97); backdrop-filter:blur(15px); color:#fff; padding:20px 28px; border-radius:12px; z-index:9999; box-shadow:0 15px 40px rgba(0,0,0,0.6); transition:transform 0.4s cubic-bezier(0.175,0.885,0.32,1.275),opacity 0.4s; opacity:0; pointer-events:auto; font-weight:400; text-align:center; width:90vw; max-width:420px; font-size:0.85rem; line-height:1.5; cursor:pointer;';
+        toast.title = 'Click to dismiss';
+        toast.addEventListener('click', dismissToast);
         document.body.appendChild(toast);
     }
-    toast.innerHTML = message;
-    if (type === 'warning') toast.style.border = '2px solid rgba(239, 68, 68, 0.8)';
+    const borders = { warning:'2px solid rgba(239,68,68,0.8)', error:'2px solid rgba(239,68,68,0.8)', success:'1px solid rgba(34,197,94,0.6)', info:'1px solid rgba(139,92,246,0.4)' };
+    toast.style.border = borders[type] || borders.info;
+    toast.innerHTML = message + '<div style="font-size:0.7rem;color:#64748b;margin-top:10px;opacity:0.8;">Tap to dismiss</div>';
     toast.style.opacity = '1';
-    toast.style.transform = 'translate(-50%, -50%) scale(1)';
-    
-    // Clear old timeout
+    toast.style.transform = 'translate(-50%,-50%) scale(1)';
+    const duration = (type === 'warning' || type === 'error') ? 8000 : 5000;
     if (window.toastTimeout) clearTimeout(window.toastTimeout);
-    window.toastTimeout = setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translate(-50%, -50%) scale(0.9)';
-    }, 10000); // 10 seconds duration
+    window.toastTimeout = setTimeout(dismissToast, duration);
+}
+
+function dismissToast() {
+    const toast = document.getElementById('app-toast');
+    if (toast) { toast.style.opacity = '0'; toast.style.transform = 'translate(-50%,-50%) scale(0.9)'; }
+    if (window.toastTimeout) { clearTimeout(window.toastTimeout); window.toastTimeout = null; }
 }
 
 // Run once on load to initialize legend state
@@ -1916,29 +1952,43 @@ document.addEventListener('touchstart', (e) => {
 // =============================================
 // EXECUTIVE SUMMARY DASHBOARD & LOCAL SEARCH LOGIC
 // =============================================
+// Lazy-load search index on first keystroke (saves ~786KB on every page load)
+let _searchIndexLoading = false;
+async function loadSearchIndex() {
+    if (localSearchIndex.length > 0 || _searchIndexLoading) return;
+    _searchIndexLoading = true;
+    try {
+        const cached = sessionStorage.getItem('search_index_v1');
+        if (cached) {
+            localSearchIndex = JSON.parse(cached);
+        } else {
+            const res = await fetch(`${DATA_BASE_URL}/search_index.json`);
+            if (res.ok) {
+                localSearchIndex = await res.json();
+                try { sessionStorage.setItem('search_index_v1', JSON.stringify(localSearchIndex)); } catch(e) {}
+            }
+        }
+        updateViewportStats();
+    } catch (e) {
+        console.error('Error loading search index:', e);
+    }
+}
+
 async function loadDashboardAndSearchData() {
     try {
+        // Only load summary.json at startup — search index loads lazily on first keystroke
         const cachedIndex = sessionStorage.getItem('search_index_v1');
-        const fetchPromises = [fetch(`${DATA_BASE_URL}/summary.json`)];
-        if (!cachedIndex) fetchPromises.push(fetch(`${DATA_BASE_URL}/search_index.json`));
-
-        const responses = await Promise.all(fetchPromises);
-        
-        if (responses[0] && responses[0].ok) {
-            summaryStats = await responses[0].json();
+        if (cachedIndex) {
+            localSearchIndex = JSON.parse(cachedIndex); // restore from cache immediately for viewport stats
+        }
+        const res = await fetch(`${DATA_BASE_URL}/summary.json`);
+        if (res.ok) {
+            summaryStats = await res.json();
             populateDashboard(summaryStats);
         }
-        
-        if (cachedIndex) {
-            localSearchIndex = JSON.parse(cachedIndex);
-            updateViewportStats();
-        } else if (responses[1] && responses[1].ok) {
-            localSearchIndex = await responses[1].json();
-            try { sessionStorage.setItem('search_index_v1', JSON.stringify(localSearchIndex)); } catch(e) {}
-            updateViewportStats();
-        }
+        if (localSearchIndex.length > 0) updateViewportStats();
     } catch (e) {
-        console.error("Error loading dashboard/search data:", e);
+        console.error("Error loading dashboard data:", e);
     }
 }
 
@@ -2138,8 +2188,12 @@ function updateViewportStats() {
     }
 }
 
-// Register map viewport moveend listener for statistics
-map.on('moveend', updateViewportStats);
+// Register map viewport moveend listener for statistics (debounced for performance)
+let _moveEndTimer;
+map.on('moveend', () => {
+    clearTimeout(_moveEndTimer);
+    _moveEndTimer = setTimeout(updateViewportStats, 250);
+});
 
 
 // =====================================================
@@ -2188,13 +2242,13 @@ map.on('moveend', updateViewportStats);
 // =====================================================
 (function() {
     const lazyLayers = [
-        { toggleId: 'layer-inspection',    loaderFn: () => window.loadInspection && window.loadInspection(),    layerId: 'inspection_layer' },
-        { toggleId: 'layer-arg-locations', loaderFn: () => window.loadArgLocations && window.loadArgLocations(), layerId: 'arg_locations_layer' },
-        { toggleId: 'layer-arg-thiessen',  loaderFn: () => window.loadArgThiessen && window.loadArgThiessen(),  layerId: 'arg_thiessen_fill' },
-        { toggleId: 'layer-tiz',           loaderFn: () => window.loadTiz && window.loadTiz(),                  layerId: 'tiz_fill' },
-        { toggleId: 'layer-tiz-50k',       loaderFn: () => window.loadTiz50k && window.loadTiz50k(),            layerId: 'tiz_50k_fill' },
-        { toggleId: 'layer-satellite-ls',  loaderFn: () => window.loadSatelliteLs && window.loadSatelliteLs(),  layerId: 'satellite_ls_fill' },
-        { toggleId: 'layer-contours',      loaderFn: () => window.loadContours && window.loadContours(),        layerId: 'contours_line' },
+        { toggleId: 'layer-inspection',    loaderFn: () => window.loadInspection && window.loadInspection(),     layerId: 'inspection_points' },
+        { toggleId: 'layer-arg-locations', loaderFn: () => window.loadARGLayers && window.loadARGLayers(),       layerId: 'arg_locations_points' },
+        { toggleId: 'layer-arg-thiessen',  loaderFn: () => window.loadARGLayers && window.loadARGLayers(),       layerId: 'arg_thiessen_fill' },
+        { toggleId: 'layer-tiz',           loaderFn: () => window.loadTizzones && window.loadTizzones(),         layerId: 'tiz_zones_fill' },
+        { toggleId: 'layer-tiz-50k',       loaderFn: () => window.loadTizzones50k && window.loadTizzones50k(),  layerId: 'tiz_50k_fill' },
+        { toggleId: 'layer-satellite-ls',  loaderFn: () => window.loadSatelliteLs && window.loadSatelliteLs(),  layerId: 'satellite_polygons' },
+        { toggleId: 'layer-contours',      loaderFn: () => window.loadContours && window.loadContours(),         layerId: 'contours_line' },
 
     ];
 

@@ -16,6 +16,8 @@
             align-items: center;
             gap: 8px;
             padding: 0.55rem 1rem;
+            /* Safe-area inset for notched devices (all screen sizes) */
+            padding-top: max(0.55rem, calc(0.3rem + env(safe-area-inset-top, 0px)));
             background: rgba(15, 23, 42, 0.97);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
@@ -1300,7 +1302,7 @@ input:checked + .slider:active:before { transform: translateX(18px); }
 
 @media (max-width: 768px) {
     .dashboard-panel {
-        top: 4.5rem;
+        top: 7.5rem;
         left: 0.5rem;
         right: auto;
         width: 300px;
@@ -1311,7 +1313,7 @@ input:checked + .slider:active:before { transform: translateX(18px); }
 
 @media (max-width: 480px) {
     .dashboard-panel {
-        top: 4rem;
+        top: 7.5rem;
         left: 0.5rem;
         right: 0.5rem;
         width: auto;
