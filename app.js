@@ -139,12 +139,13 @@ map.on('load', () => {
     updateProgress(40, 'Loading hazard layers...');
 
     // Only load 1:50k initially (lighter, faster)
-    map.addSource('hazard_50k', {
-        type: 'vector',
-        url: `pmtiles://${DATA_BASE_URL}/LHMP_50000.pmtiles`,
+    // Only load 1:50k initially (lighter, faster)
+    map.addSource('hazard_50k_raster', {
+        type: 'raster',
+        url: `pmtiles://${DATA_BASE_URL}/hazard_50k_raster.pmtiles`,
         attribution: 'NBRO',
         minzoom: 7,
-        maxzoom: 24 // Allow overzooming deeply
+        maxzoom: 24
     });
 
     updateProgress(60, 'Initializing layer system...');
@@ -159,15 +160,14 @@ map.on('load', () => {
     map.addLayer({ id: 'z-index-6-top', type: 'background', layout: { visibility: 'none' } }); // Inspection
 
     // Load 50k immediately (Core Map)
+    // Load 50k immediately (Core Map)
     map.addLayer({
-        'id': 'hazard_50k_fill',
-        'type': 'fill',
-        'source': 'hazard_50k',
-        'source-layer': 'hazard_50k',
+        'id': 'hazard_50k_raster_layer',
+        'type': 'raster',
+        'source': 'hazard_50k_raster',
         'paint': {
-            'fill-color': hazardColorMatch,
-            'fill-opacity': 0.6,
-            'fill-outline-color': 'rgba(0,0,0,0.1)'
+            'raster-opacity': 0.6,
+            'raster-resampling': 'nearest'
         }
     }, 'z-index-2-hazards_50k'); // Put BEFORE the spacer
 
@@ -177,33 +177,27 @@ map.on('load', () => {
         if (window.hazard10kLoaded) return;
         window.hazard10kLoaded = true; // Set flag immediately to prevent retries
 
-        if (!map.getSource('hazard_10k')) {
-            map.addSource('hazard_10k', {
-                type: 'vector',
-                url: `pmtiles://${DATA_BASE_URL}/LHZM_10000.pmtiles`,
+        if (!map.getSource('hazard_10k_raster')) {
+            map.addSource('hazard_10k_raster', {
+                type: 'raster',
+                url: `pmtiles://${DATA_BASE_URL}/hazard_10k_raster.pmtiles`,
                 attribution: 'NBRO',
                 minzoom: 12,
                 maxzoom: 24
             });
 
             map.addLayer({
-                'id': 'hazard_10k_fill',
-                'type': 'fill',
-                'source': 'hazard_10k',
-                'source-layer': 'hazard_10k',
+                'id': 'hazard_10k_raster_layer',
+                'type': 'raster',
+                'source': 'hazard_10k_raster',
                 'paint': {
-                    'fill-color': hazardColorMatch,
-                    'fill-opacity': 0.6,
-                    'fill-outline-color': 'rgba(0,0,0,0.1)'
+                    'raster-opacity': 0.6,
+                    'raster-resampling': 'nearest'
                 },
                 'layout': {
                     'visibility': document.getElementById('layer-10k').checked ? 'visible' : 'none'
                 }
             }, 'z-index-3-hazards_10k'); // Place in 10k shelf
-
-            map.on('click', 'hazard_10k_fill', showPopup);
-            map.on('mouseenter', 'hazard_10k_fill', () => map.getCanvas().style.cursor = 'pointer');
-            map.on('mouseleave', 'hazard_10k_fill', () => map.getCanvas().style.cursor = '');
         }
     }
 
@@ -617,14 +611,13 @@ map.on('load', () => {
         'layout': { 'visibility': 'none' }
     });
 
-    map.on('click', 'hazard_50k_fill', showPopup);
+    // (hazard popups removed due to raster layers)
     map.on('click', 'inspection_points', showPopup);
     map.on('click', 'arg_locations_points', showPopup);
     map.on('click', 'satellite_points', showPopup);
     map.on('click', 'satellite_polygons', showPopup);
 
-    map.on('mouseenter', 'hazard_50k_fill', () => map.getCanvas().style.cursor = 'pointer');
-    map.on('mouseleave', 'hazard_50k_fill', () => map.getCanvas().style.cursor = '');
+    // (hazard pointers removed due to raster layers)
     map.on('mouseenter', 'inspection_points', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'inspection_points', () => map.getCanvas().style.cursor = '');
     map.on('mouseenter', 'arg_locations_points', () => map.getCanvas().style.cursor = 'pointer');
@@ -773,7 +766,7 @@ safeAddEventListener('layer-10k', 'change', (e) => {
         window.loadHazard10k();
     }
     if (window.hazard10kLoaded) {
-        map.setLayoutProperty('hazard_10k_fill', 'visibility', e.target.checked ? 'visible' : 'none');
+        map.setLayoutProperty('hazard_10k_raster_layer', 'visibility', e.target.checked ? 'visible' : 'none');
     }
 
     // Dynamic zoom restriction: 1:10k supports up to zoom 18
@@ -782,21 +775,21 @@ safeAddEventListener('layer-10k', 'change', (e) => {
 
 safeAddEventListener('opacity-10k', 'input', (e) => {
     const opacity = parseInt(e.target.value) / 100;
-    if (map.getLayer('hazard_10k_fill')) {
-        map.setPaintProperty('hazard_10k_fill', 'fill-opacity', opacity);
+    if (map.getLayer('hazard_10k_raster_layer')) {
+        map.setPaintProperty('hazard_10k_raster_layer', 'raster-opacity', opacity);
     }
 });
 
 safeAddEventListener('layer-50k', 'change', (e) => {
-    map.setLayoutProperty('hazard_50k_fill', 'visibility', e.target.checked ? 'visible' : 'none');
+    map.setLayoutProperty('hazard_50k_raster_layer', 'visibility', e.target.checked ? 'visible' : 'none');
     // Dynamic zoom restriction: 1:50k supports up to zoom 14
     updateMaxZoom();
 });
 
 safeAddEventListener('opacity-50k', 'input', (e) => {
     const opacity = parseInt(e.target.value) / 100;
-    if (map.getLayer('hazard_50k_fill')) {
-        map.setPaintProperty('hazard_50k_fill', 'fill-opacity', opacity);
+    if (map.getLayer('hazard_50k_raster_layer')) {
+        map.setPaintProperty('hazard_50k_raster_layer', 'raster-opacity', opacity);
     }
 });
 
@@ -977,9 +970,9 @@ function ensureLayersLoaded(layers, callback) {
             if (item.layer) {
                 // Dynamic layer placement
                 if (item.layer.id === 'hillshade') {
-                    map.addLayer(item.layer, 'hazard_50k_fill');
+                    map.addLayer(item.layer, 'z-index-2-hazards_50k');
                 } else {
-                    map.addLayer(item.layer, 'hazard_50k_fill');
+                    map.addLayer(item.layer, 'z-index-2-hazards_50k');
                 }
             }
         });
