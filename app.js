@@ -407,21 +407,32 @@ map.on('load', () => {
         if (window.tizZonesLoaded) return;
         window.tizZonesLoaded = true;
 
-        map.addSource('tiz_zones_raster', {
-            type: 'raster',
-            url: `pmtiles://${DATA_BASE_URL}/tiz_10k_raster.pmtiles`
+        map.addSource('tiz_zones', {
+            type: 'vector',
+            url: `pmtiles://${DATA_BASE_URL}/tiz_10k.pmtiles`
         });
 
         map.addLayer({
-            'id': 'tiz_zones_raster_layer',
-            'type': 'raster',
-            'source': 'tiz_zones_raster',
+            'id': 'tiz_zones_fill',
+            'type': 'fill',
+            'source': 'tiz_zones',
+            'source-layer': 'tiz_layer',
             'paint': {
-                'raster-opacity': 0.6,
-                'raster-resampling': 'nearest'
+                'fill-color': [
+                    'match',
+                    ['get', 'gridcode'],
+                    1, '#ef4444', // Red
+                    2, '#facc15', // Yellow
+                    '#000000'
+                ],
+                'fill-opacity': 0.6
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-4-zones');
+
+        map.on('click', 'tiz_zones_fill', showPopup);
+        map.on('mouseenter', 'tiz_zones_fill', () => map.getCanvas().style.cursor = 'pointer');
+        map.on('mouseleave', 'tiz_zones_fill', () => map.getCanvas().style.cursor = '');
     };
 
     // 2b. TOTAL IMPACT ZONE (TIZ) — 1:50,000
@@ -430,21 +441,32 @@ map.on('load', () => {
         if (window.tizZones50kLoaded) return;
         window.tizZones50kLoaded = true;
 
-        map.addSource('tiz_zones_50k_raster', {
-            type: 'raster',
-            url: `pmtiles://${DATA_BASE_URL}/tiz_50k_raster.pmtiles`
+        map.addSource('tiz_zones_50k', {
+            type: 'vector',
+            url: `pmtiles://${DATA_BASE_URL}/tiz_50k.pmtiles`
         });
 
         map.addLayer({
-            'id': 'tiz_zones_50k_raster_layer',
-            'type': 'raster',
-            'source': 'tiz_zones_50k_raster',
+            'id': 'tiz_50k_fill',
+            'type': 'fill',
+            'source': 'tiz_zones_50k',
+            'source-layer': 'tiz_layer',
             'paint': {
-                'raster-opacity': 0.6,
-                'raster-resampling': 'nearest'
+                'fill-color': [
+                    'match',
+                    ['get', 'gridcode'],
+                    1, '#ef4444', // Red
+                    2, '#facc15', // Yellow
+                    '#000000'
+                ],
+                'fill-opacity': 0.6
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-4-zones');
+
+        map.on('click', 'tiz_50k_fill', showPopup);
+        map.on('mouseenter', 'tiz_50k_fill', () => map.getCanvas().style.cursor = 'pointer');
+        map.on('mouseleave', 'tiz_50k_fill', () => map.getCanvas().style.cursor = '');
     };
 
     // ARG Rain Gauges & Thiessen Polygons
@@ -533,49 +555,6 @@ map.on('load', () => {
         }, 'z-index-5-overlays');
     };
 
-
-    // Released Areas Lazy
-    window.releasedAreasLoaded = false;
-    window.loadReleasedAreas = function () {
-        if (window.releasedAreasLoaded) return;
-        window.releasedAreasLoaded = true;
-
-        map.addSource('released_areas_source', {
-            type: 'vector',
-            url: `pmtiles://${DATA_BASE_URL}/released_areas.pmtiles`
-        });
-
-        // Fill layer
-        map.addLayer({
-            'id': 'released_areas_fill',
-            'type': 'fill',
-            'source': 'released_areas_source',
-            'source-layer': 'released_areas',
-            'paint': {
-                'fill-color': '#a855f7', // Purple
-                'fill-opacity': parseFloat(document.getElementById('opacity-released-areas').value) / 100
-            },
-            'layout': { 'visibility': 'visible' }
-        }, 'z-index-5-overlays');
-
-        // Border/outline layer
-        map.addLayer({
-            'id': 'released_areas_outline',
-            'type': 'line',
-            'source': 'released_areas_source',
-            'source-layer': 'released_areas',
-            'paint': {
-                'line-color': '#7e22ce', // Dark Purple
-                'line-width': 1.5,
-                'line-opacity': 0.8
-            },
-            'layout': { 'visibility': 'visible' }
-        }, 'z-index-5-overlays');
-
-        map.on('click', 'released_areas_fill', showPopup);
-        map.on('mouseenter', 'released_areas_fill', () => map.getCanvas().style.cursor = 'pointer');
-        map.on('mouseleave', 'released_areas_fill', () => map.getCanvas().style.cursor = '');
-    };
 
     // Satellite Landslides (Polygons)
     map.addLayer({
@@ -719,19 +698,16 @@ function showPopup(e) {
                 </div>
             </div>
         `;
-    } else if (layerId === 'released_areas_fill') {
-        const areaVal = props['Shape_Area'] ? (parseFloat(props['Shape_Area']) / 1000000).toFixed(3) + ' km²' : 'N/A';
-        const lenVal = props['Shape_Leng'] ? parseFloat(props['Shape_Leng']).toFixed(1) + ' m' : 'N/A';
+    } else if (layerId === 'tiz_zones_fill' || layerId === 'tiz_50k_fill') {
+        const riskLevel = props.gridcode === 1 ? 'Red Zone' : (props.gridcode === 2 ? 'Yellow Zone' : 'Unknown');
+        const badgeColor = props.gridcode === 1 ? '#ef4444' : '#facc15';
+        const badgeBg = props.gridcode === 1 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(250, 204, 21, 0.15)';
         content = `
-            <div style="padding: 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 240px; max-width: 280px;">
+            <div style="padding: 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 200px;">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
-                    <span style="font-weight: 700; color: #fff; font-size: 0.85rem;">🟪 Released Area (IRS/LI)</span>
+                    <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid ${badgeColor}; color: ${badgeColor}; background: ${badgeBg}; white-space: nowrap;">${riskLevel}</span>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.75rem; color: #cbd5e1; line-height: 1.4;">
-                    <div><b>Status:</b> Released from Landslide Risk</div>
-                    <div><b>Area Size:</b> ${areaVal}</div>
-                    <div><b>Perimeter:</b> ${lenVal}</div>
-                </div>
+                <div style="font-size: 0.8rem; color: #e2e8f0;"><b>Total Impact Zone (TIZ)</b></div>
             </div>
         `;
     } else {
@@ -820,20 +796,6 @@ safeAddEventListener('layer-contours', 'change', (e) => {
 });
 
 
-safeAddEventListener('layer-released-areas', 'change', (e) => {
-    if (e.target.checked && !window.releasedAreasLoaded) window.loadReleasedAreas();
-    const visibility = e.target.checked ? 'visible' : 'none';
-    if (map.getLayer('released_areas_fill')) map.setLayoutProperty('released_areas_fill', 'visibility', visibility);
-    if (map.getLayer('released_areas_outline')) map.setLayoutProperty('released_areas_outline', 'visibility', visibility);
-});
-
-safeAddEventListener('opacity-released-areas', 'input', (e) => {
-    const opacity = parseInt(e.target.value) / 100;
-    if (map.getLayer('released_areas_fill')) {
-        map.setPaintProperty('released_areas_fill', 'fill-opacity', opacity);
-    }
-});
-
 safeAddEventListener('layer-inspection', 'change', (e) => {
     if (e.target.checked && !window.inspectionLoaded) window.loadInspection();
     const visibility = e.target.checked ? 'visible' : 'none';
@@ -849,8 +811,8 @@ if (tizToggleBtn) {
             showToast('⚠️ <b>INTERNAL USE ONLY</b><br><br>The Total Impact Zone (TIZ) layer is a preliminary, model-derived product and has not been field verified. This dataset is restricted to internal institutional use only and is provided solely as a decision-support tool. It should not be used independently or considered as a final or authoritative assessment.', 'warning');
             if (!window.tizZonesLoaded) window.loadTizzones();
         }
-        if (map.getLayer('tiz_zones_raster_layer')) {
-            map.setLayoutProperty('tiz_zones_raster_layer', 'visibility', e.target.checked ? 'visible' : 'none');
+        if (map.getLayer('tiz_zones_fill')) {
+            map.setLayoutProperty('tiz_zones_fill', 'visibility', e.target.checked ? 'visible' : 'none');
         }
     });
 }
@@ -862,8 +824,8 @@ if (tiz50kToggleBtn) {
             showToast('⚠️ <b>INTERNAL USE ONLY</b><br><br>The Total Impact Zone (TIZ) layer is a preliminary, model-derived product and has not been field verified. This dataset is restricted to internal institutional use only and is provided solely as a decision-support tool. It should not be used independently or considered as a final or authoritative assessment.', 'warning');
             if (!window.tizZones50kLoaded) window.loadTizzones50k();
         }
-        if (map.getLayer('tiz_zones_50k_raster_layer')) {
-            map.setLayoutProperty('tiz_zones_50k_raster_layer', 'visibility', e.target.checked ? 'visible' : 'none');
+        if (map.getLayer('tiz_50k_fill')) {
+            map.setLayoutProperty('tiz_50k_fill', 'visibility', e.target.checked ? 'visible' : 'none');
         }
     });
 }
@@ -2233,7 +2195,7 @@ map.on('moveend', updateViewportStats);
         { toggleId: 'layer-tiz-50k',       loaderFn: () => window.loadTiz50k && window.loadTiz50k(),            layerId: 'tiz_50k_fill' },
         { toggleId: 'layer-satellite-ls',  loaderFn: () => window.loadSatelliteLs && window.loadSatelliteLs(),  layerId: 'satellite_ls_fill' },
         { toggleId: 'layer-contours',      loaderFn: () => window.loadContours && window.loadContours(),        layerId: 'contours_line' },
-        { toggleId: 'layer-released-areas',loaderFn: () => window.loadReleasedAreas && window.loadReleasedAreas(), layerId: 'released_areas_fill' },
+
     ];
 
     lazyLayers.forEach(({ toggleId, loaderFn, layerId }) => {
