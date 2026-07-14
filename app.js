@@ -551,9 +551,8 @@ map.on('load', () => {
         window.releasedAreasLoaded = true;
 
         map.addSource('released_areas_source', {
-            type: 'geojson',
-            data: `${DATA_BASE_URL}/released_areas.geojson`,
-            tolerance: 1.5
+            type: 'vector',
+            url: `pmtiles://${DATA_BASE_URL}/released_areas.pmtiles`
         });
 
         // Fill layer
@@ -561,6 +560,7 @@ map.on('load', () => {
             'id': 'released_areas_fill',
             'type': 'fill',
             'source': 'released_areas_source',
+            'source-layer': 'released_areas',
             'paint': {
                 'fill-color': '#a855f7', // Purple
                 'fill-opacity': parseFloat(document.getElementById('opacity-released-areas').value) / 100
@@ -573,6 +573,7 @@ map.on('load', () => {
             'id': 'released_areas_outline',
             'type': 'line',
             'source': 'released_areas_source',
+            'source-layer': 'released_areas',
             'paint': {
                 'line-color': '#7e22ce', // Dark Purple
                 'line-width': 1.5,
