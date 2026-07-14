@@ -420,9 +420,9 @@ map.on('load', () => {
             'paint': {
                 'fill-color': [
                     'match',
-                    ['get', 'gridcode'],
-                    1, '#ef4444', // Red
-                    2, '#facc15', // Yellow
+                    ['get', 'DN'],
+                    10, '#ef4444', // Red
+                    20, '#facc15', // Yellow
                     '#000000'
                 ],
                 'fill-opacity': 0.6
@@ -454,9 +454,9 @@ map.on('load', () => {
             'paint': {
                 'fill-color': [
                     'match',
-                    ['get', 'gridcode'],
-                    1, '#ef4444', // Red
-                    2, '#facc15', // Yellow
+                    ['get', 'DN'],
+                    10, '#ef4444', // Red
+                    20, '#facc15', // Yellow
                     '#000000'
                 ],
                 'fill-opacity': 0.6
@@ -699,9 +699,9 @@ function showPopup(e) {
             </div>
         `;
     } else if (layerId === 'tiz_zones_fill' || layerId === 'tiz_50k_fill') {
-        const riskLevel = props.gridcode === 1 ? 'Red Zone' : (props.gridcode === 2 ? 'Yellow Zone' : 'Unknown');
-        const badgeColor = props.gridcode === 1 ? '#ef4444' : '#facc15';
-        const badgeBg = props.gridcode === 1 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(250, 204, 21, 0.15)';
+        const riskLevel = props.DN === 10 ? 'Red Zone' : (props.DN === 20 ? 'Yellow Zone' : 'Unknown');
+        const badgeColor = props.DN === 10 ? '#ef4444' : '#facc15';
+        const badgeBg = props.DN === 10 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(250, 204, 21, 0.15)';
         content = `
             <div style="padding: 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 200px;">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
