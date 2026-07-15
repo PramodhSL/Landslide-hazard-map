@@ -74,13 +74,13 @@ const map = new maplibregl.Map({
 });
 
 // Add Navigation Control
-map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
+map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-left');
 
 // Add scale control
 map.addControl(new maplibregl.ScaleControl({
     maxWidth: 150,
     unit: 'metric'
-}), 'bottom-right');
+}), 'bottom-left');
 
 // Progress bar update function
 function updateProgress(percent, status) {

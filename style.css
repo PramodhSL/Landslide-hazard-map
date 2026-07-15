@@ -701,6 +701,13 @@
             border-radius: 8px;
             /* Slightly rounded */
             overflow: hidden;
+            display: flex; /* Make it horizontal */
+            flex-direction: row;
+        }
+
+        .maplibregl-ctrl-bottom-left {
+            margin-left: 1rem !important;
+            margin-bottom: 0.5rem !important;
         }
 
         .maplibregl-ctrl-group button {
@@ -708,8 +715,8 @@
             /* Force gradient */
             color: #8b5cf6 !important;
             /* Force purple icon color */
-            width: 32px;
-            height: 32px;
+            width: 34px;
+            height: 34px;
             border: 0 !important;
         }
 
@@ -718,7 +725,8 @@
         }
 
         .maplibregl-ctrl-group button+button {
-            border-top: 1px solid rgba(139, 92, 246, 0.3) !important;
+            border-top: none !important;
+            border-left: 1px solid rgba(139, 92, 246, 0.3) !important;
         }
 
         /* FIX: Use filter to turn black SVG icons into purple/white */
