@@ -73,10 +73,10 @@ const map = new maplibregl.Map({
     pitchWithRotate: true
 });
 
-// Add Navigation Control (zoom buttons)
-map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-left');
+// Add Navigation Control
+map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
 
-// Add Scale Bar (shows distance in km/m)
+// Add scale control
 map.addControl(new maplibregl.ScaleControl({
     maxWidth: 150,
     unit: 'metric'
@@ -197,100 +197,16 @@ map.on('load', () => {
         map.addSource('inspection_reports', {
             type: 'geojson',
             data: `${DATA_BASE_URL}/inspection_reports.geojson`,
-            cluster: true,
-            clusterMaxZoom: 11,  // individual dots appear from zoom 12+
-            clusterRadius: 30,   // tighter clusters, fewer overlapping circles
-            clusterProperties: {
-                'hr_count': ['+', ['case', 
-                    ['any', 
-                        ['in', 'HR1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'HR 1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'P1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'HR2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'HR 2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'P2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'HR3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'HR 3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'P3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'HIGH', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'H', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]]
-                    ], 1, 0
-                ]],
-                'mr_count': ['+', ['case', 
-                    ['any', 
-                        ['in', 'MR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'MEDIUM', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'M', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'P4', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'P 4', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'PRIORITY 4', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]]
-                    ], 1, 0
-                ]],
-                'lr_count': ['+', ['case', 
-                    ['any', 
-                        ['in', 'LR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'LOW', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]],
-                        ['in', 'L', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], ['get', 'Risk level'], '']]]
-                    ], 1, 0
-                ]]
-            }
+            cluster: false
         });
 
-        // Cluster Circles (Hollow with risk color-coded strokes)
-        map.addLayer({
-            'id': 'inspection_clusters',
-            'type': 'circle',
-            'source': 'inspection_reports',
-            'filter': ['has', 'point_count'],
-            'paint': {
-                'circle-color': 'rgba(15, 23, 42, 0.6)', // Glassmorphic translucent background
-                'circle-radius': [
-                    'step',
-                    ['get', 'point_count'],
-                    20,
-                    100, 28,
-                    750, 36
-                ],
-                'circle-stroke-width': 4.0, // Thick distinct outline
-                'circle-stroke-color': [
-                    'case',
-                    ['all', 
-                        ['>=', ['coalesce', ['get', 'hr_count'], 0], ['coalesce', ['get', 'mr_count'], 0]],
-                        ['>=', ['coalesce', ['get', 'hr_count'], 0], ['coalesce', ['get', 'lr_count'], 0]]
-                    ], '#dc2626', // Red for HR majority
-                    ['all', 
-                        ['>=', ['coalesce', ['get', 'mr_count'], 0], ['coalesce', ['get', 'hr_count'], 0]],
-                        ['>=', ['coalesce', ['get', 'mr_count'], 0], ['coalesce', ['get', 'lr_count'], 0]]
-                    ], '#eab308', // Yellow/Amber for MR majority
-                    '#22c55e' // Green for LR majority
-                ]
-            },
-            'layout': { 'visibility': 'visible' }
-        }, 'z-index-6-top');
 
-        // Cluster Count Labels (White text for contrast)
-        map.addLayer({
-            'id': 'inspection_cluster_count',
-            'type': 'symbol',
-            'source': 'inspection_reports',
-            'filter': ['has', 'point_count'],
-            'layout': {
-                'text-field': '{point_count}',
-                'text-size': 12,
-                'text-allow-overlap': true,
-                'visibility': 'visible'
-            },
-            'paint': {
-                'text-color': '#ffffff'
-            }
-        }, 'z-index-6-top');
 
         // Unclustered Points (Individual dots)
         map.addLayer({
             'id': 'inspection_points',
             'type': 'circle',
             'source': 'inspection_reports',
-            'filter': ['!', ['has', 'point_count']],
             'paint': {
                 'circle-radius': 6, 
                 'circle-color': [
@@ -354,23 +270,10 @@ map.on('load', () => {
             'layout': { 'visibility': 'visible' }
         }, 'z-index-6-top'); // Top shelf
 
-        // Click on cluster zooms in
-        map.on('click', 'inspection_clusters', async (e) => {
-            const features = map.queryRenderedFeatures(e.point, { layers: ['inspection_clusters'] });
-            const clusterId = features[0].properties.cluster_id;
-            const zoom = await map.getSource('inspection_reports').getClusterExpansionZoom(clusterId);
-            map.easeTo({
-                center: features[0].geometry.coordinates,
-                zoom: zoom + 0.5
-            });
-        });
-
         // Re-bind events
         map.on('click', 'inspection_points', showPopup);
         map.on('mouseenter', 'inspection_points', () => map.getCanvas().style.cursor = 'pointer');
         map.on('mouseleave', 'inspection_points', () => map.getCanvas().style.cursor = '');
-        map.on('mouseenter', 'inspection_clusters', () => map.getCanvas().style.cursor = 'pointer');
-        map.on('mouseleave', 'inspection_clusters', () => map.getCanvas().style.cursor = '');
     };
 
     // 2. TOTAL IMPACT ZONE (TIZ) — 1:10,000
@@ -782,8 +685,6 @@ safeAddEventListener('layer-inspection', 'change', (e) => {
     if (e.target.checked && !window.inspectionLoaded) window.loadInspection();
     const visibility = e.target.checked ? 'visible' : 'none';
     if (map.getLayer('inspection_points')) map.setLayoutProperty('inspection_points', 'visibility', visibility);
-    if (map.getLayer('inspection_clusters')) map.setLayoutProperty('inspection_clusters', 'visibility', visibility);
-    if (map.getLayer('inspection_cluster_count')) map.setLayoutProperty('inspection_cluster_count', 'visibility', visibility);
 });
 
 const tizToggleBtn = document.getElementById('layer-tiz');
@@ -1987,17 +1888,13 @@ async function loadSearchIndex() {
 
 async function loadDashboardAndSearchData() {
     try {
-        // Only load summary.json at startup — search index loads lazily on first keystroke
-        const cachedIndex = sessionStorage.getItem('search_index_v1');
-        if (cachedIndex) {
-            localSearchIndex = JSON.parse(cachedIndex); // restore from cache immediately for viewport stats
-        }
         const res = await fetch(`${DATA_BASE_URL}/summary.json`);
         if (res.ok) {
             summaryStats = await res.json();
             populateDashboard(summaryStats);
         }
-        if (localSearchIndex.length > 0) updateViewportStats();
+        // Force load search index immediately so dashboard viewport stats work properly
+        await loadSearchIndex();
     } catch (e) {
         console.error("Error loading dashboard data:", e);
     }
