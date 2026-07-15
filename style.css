@@ -1162,7 +1162,7 @@ input:checked + .slider:active:before { transform: translateX(18px); }
 .dashboard-panel {
     position: fixed;
     top: auto;
-    bottom: 1.5rem;
+    bottom: 3.5rem; /* raised to clear zoom/scale controls at bottom-left */
     left: 1rem;
     background: rgba(15, 23, 42, 0.97);
     backdrop-filter: blur(12px);
@@ -1172,7 +1172,7 @@ input:checked + .slider:active:before { transform: translateX(18px); }
     box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(139, 92, 246, 0.35);
     z-index: 1500;
-    width: 320px;
+    width: 330px;
     max-height: 80vh;
     display: flex;
     flex-direction: column;
@@ -1264,7 +1264,7 @@ input:checked + .slider:active:before { transform: translateX(18px); }
 }
 
 .district-table-wrapper {
-    max-height: 250px;
+    max-height: 200px;
     overflow-y: auto;
     border: 1px solid rgba(148, 163, 184, 0.15);
     border-radius: 8px;
@@ -1303,6 +1303,7 @@ input:checked + .slider:active:before { transform: translateX(18px); }
 @media (max-width: 768px) {
     .dashboard-panel {
         top: 7.5rem;
+        bottom: auto; /* switch to top-anchored on mobile so it doesn't fight FABs */
         left: 0.5rem;
         right: auto;
         width: 300px;

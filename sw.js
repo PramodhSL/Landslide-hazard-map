@@ -1,4 +1,4 @@
-const CACHE_NAME = 'landslide-map-v38';
+const CACHE_NAME = 'landslide-map-v40';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',

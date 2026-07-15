@@ -198,8 +198,8 @@ map.on('load', () => {
             type: 'geojson',
             data: `${DATA_BASE_URL}/inspection_reports.geojson`,
             cluster: true,
-            clusterMaxZoom: 13,
-            clusterRadius: 50,
+            clusterMaxZoom: 11,  // individual dots appear from zoom 12+
+            clusterRadius: 30,   // tighter clusters, fewer overlapping circles
             clusterProperties: {
                 'hr_count': ['+', ['case', 
                     ['any', 
@@ -752,21 +752,19 @@ safeAddEventListener('opacity-50k', 'input', (e) => {
 
 // Update max zoom based on active layers
 function updateMaxZoom() {
-    const is10kActive = document.getElementById('layer-10k').checked;
-    const is50kActive = document.getElementById('layer-50k').checked;
+    const box10k = document.getElementById('layer-10k');
+    const box50k = document.getElementById('layer-50k');
+    const is10kActive = box10k ? box10k.checked : false;
+    const is50kActive = box50k ? box50k.checked : false;
 
     if (is10kActive) {
-        // 1:10k layer is on, allow zoom to 18
         map.setMaxZoom(18);
     } else if (is50kActive) {
-        // Only 1:50k layer is on, restrict zoom to 14
         map.setMaxZoom(14);
     } else {
-        // No hazard layers, default max zoom
         map.setMaxZoom(18);
     }
 
-    // If current zoom exceeds new max, zoom out
     if (map.getZoom() > map.getMaxZoom()) {
         map.setZoom(map.getMaxZoom());
     }
@@ -1559,6 +1557,9 @@ function clearMeasurement() {
     measureMarkers.forEach(marker => marker.remove());
     measureMarkers = [];
     distanceValue.textContent = '0.00';
+    // Reset unit label back to km
+    const unitEl = document.getElementById('measure-unit');
+    if (unitEl) unitEl.textContent = 'km';
     // Hide the distance result box
     measureResult.style.display = 'none';
     if (map.getSource('measure-line')) {
@@ -1795,13 +1796,21 @@ if (fullscreenBtn) {
 const compassIndicator = document.getElementById('compass-indicator');
 const compassNeedle = document.getElementById('compass-needle');
 
-map.on('rotate', () => { compassNeedle.style.transform = 'rotate(' + (-map.getBearing()) + 'deg)'; });
+map.on('rotate', () => {
+    compassNeedle.style.transform = 'rotate(' + (-map.getBearing()) + 'deg)';
+    // Show compass when map is rotated (even in 2D mode) OR pitched
+    const hasBearing = Math.abs(map.getBearing()) > 0.5;
+    const hasPitch   = map.getPitch() > 0;
+    compassIndicator.style.display = (hasBearing || hasPitch) ? 'block' : 'none';
+});
 compassIndicator.addEventListener('click', () => { map.easeTo({ bearing: 0, pitch: 0, duration: 500 }); });
-map.on('pitchend', () => { compassIndicator.style.display = map.getPitch() > 0 ? 'block' : 'none'; });
+map.on('pitchend', () => {
+    const hasBearing = Math.abs(map.getBearing()) > 0.5;
+    compassIndicator.style.display = (hasBearing || map.getPitch() > 0) ? 'block' : 'none';
+});
 
 // Check if service worker is supported
 if ('serviceWorker' in navigator) {
-    // Register service worker
     navigator.serviceWorker.register('./sw.js')
         .then(registration => {
             console.log('ServiceWorker registration successful');
@@ -1810,12 +1819,13 @@ if ('serviceWorker' in navigator) {
             console.log('ServiceWorker registration failed: ', err);
         });
 
-    // Refresh page when new service worker takes control
-    let refreshing;
+    // Notify user (not force-reload) when new service worker takes control
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (refreshing) return;
-        refreshing = true;
-        window.location.reload();
+        showToast('🔄 New version available — tap to refresh the page.', 'info');
+        const toast = document.getElementById('app-toast');
+        if (toast) {
+            toast.addEventListener('click', () => window.location.reload(), { once: true });
+        }
     });
 }
 
@@ -1878,7 +1888,7 @@ function updateLegend() {
 
 // Global listener for legend toggle
 document.addEventListener('change', (e) => {
-    if (e.target && e.target.type === 'checkbox' && e.target.id && (e.target.id.startsWith('layer-') || e.target.id.startsWith('layer-10k') || e.target.id.startsWith('layer-50k'))) {
+    if (e.target && e.target.type === 'checkbox' && e.target.id && e.target.id.startsWith('layer-')) {
         updateLegend();
     }
 });
@@ -1971,6 +1981,7 @@ async function loadSearchIndex() {
         updateViewportStats();
     } catch (e) {
         console.error('Error loading search index:', e);
+        _searchIndexLoading = false; // Allow retry on next keystroke after network failure
     }
 }
 
@@ -1994,17 +2005,18 @@ async function loadDashboardAndSearchData() {
 
 function populateDashboard(data) {
     // Populate global KPIs from summary.json (used before search_index loads)
-    const kpiMapped = document.getElementById('kpi-mapped');
-    const kpiHr     = document.getElementById('kpi-hr');
-    const kpiMr     = document.getElementById('kpi-mr');
-    const kpiLr     = document.getElementById('kpi-lr');
-    if (kpiMapped) kpiMapped.innerHTML = `${data.total_mapped.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
+    const kpiTotal   = document.getElementById('kpi-total');
+    const kpiMapped  = document.getElementById('kpi-mapped');
+    const kpiHr      = document.getElementById('kpi-hr');
+    const kpiMr      = document.getElementById('kpi-mr');
+    const kpiLr      = document.getElementById('kpi-lr');
+    // Set the immutable total count from pre-built summary
+    if (kpiTotal)  kpiTotal.innerHTML  = `${data.total_mapped.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
     if (kpiHr)     kpiHr.innerHTML     = `${data.total_hr.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
-    // MR/LR not in summary.json — leave as — until viewport loads
-    // Table will be populated by updateViewportStats once search_index is ready
+    if (kpiMapped) kpiMapped.innerHTML = '—'; // will be updated by viewport stats
     const tbody = document.getElementById('district-tbody');
     if (tbody) {
-        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#475569;padding:12px 0;">Pan or zoom map to see incidents</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#475569;padding:12px 0;">Pan or zoom map to see incidents</td></tr>';
     }
     const footer = document.getElementById('dashboard-footer');
     if (footer) footer.textContent = `Dataset: ${data.total_mapped.toLocaleString()} inspection records`;
@@ -2094,23 +2106,26 @@ function animateKpi(el, newVal) {
 }
 
 function updateViewportStats() {
-    const kpiMapped = document.getElementById('kpi-mapped');
-    const kpiHr     = document.getElementById('kpi-hr');
-    const kpiMr     = document.getElementById('kpi-mr');
-    const kpiLr     = document.getElementById('kpi-lr');
-    const tbody      = document.getElementById('district-tbody');
-    const footer     = document.getElementById('dashboard-footer');
-    const barHr      = document.getElementById('risk-bar-hr');
-    const barMr      = document.getElementById('risk-bar-mr');
-    const barLr      = document.getElementById('risk-bar-lr');
-    const barNone    = document.getElementById('risk-bar-none');
-    const riskBarCont= document.getElementById('risk-bar-container');
+    const kpiMapped  = document.getElementById('kpi-mapped');
+    const kpiHr      = document.getElementById('kpi-hr');
+    const kpiMr      = document.getElementById('kpi-mr');
+    const kpiLr      = document.getElementById('kpi-lr');
+    const tbody       = document.getElementById('district-tbody');
+    const footer      = document.getElementById('dashboard-footer');
+    const barHr       = document.getElementById('risk-bar-hr');
+    const barMr       = document.getElementById('risk-bar-mr');
+    const barLr       = document.getElementById('risk-bar-lr');
+    const barNone     = document.getElementById('risk-bar-none');
+    const riskBarCont = document.getElementById('risk-bar-container');
 
-    // Fallback to global summary if index not loaded yet
+    // Fallback to global summary if search index not loaded yet
     if (!localSearchIndex || localSearchIndex.length === 0) {
         if (summaryStats) {
-            if (kpiMapped) kpiMapped.innerHTML = summaryStats.total_mapped.toLocaleString();
-            if (kpiHr)     kpiHr.innerHTML     = summaryStats.total_hr.toLocaleString();
+            const kpiTotal = document.getElementById('kpi-total');
+            if (kpiTotal) kpiTotal.innerHTML = summaryStats.total_mapped.toLocaleString() +
+                '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>';
+            if (kpiHr) kpiHr.innerHTML = summaryStats.total_hr.toLocaleString() +
+                '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>';
         }
         return;
     }
@@ -2122,7 +2137,8 @@ function updateViewportStats() {
     const south  = bounds.getSouth();
 
     let totalMapped = 0, hrCount = 0, mrCount = 0, lrCount = 0, noneCount = 0;
-    const visibleItems = [];
+    // District grouping: { districtName: { total, hr, mr, lr } }
+    const districtMap = {};
 
     for (let i = 0; i < localSearchIndex.length; i++) {
         const item = localSearchIndex[i];
@@ -2131,19 +2147,36 @@ function updateViewportStats() {
         if (lng >= west && lng <= east && lat >= south && lat <= north) {
             totalMapped++;
             const cls = classifyRisk(item.r);
-            if      (cls === 'HR')   hrCount++;
-            else if (cls === 'MR')   mrCount++;
-            else if (cls === 'LR')   lrCount++;
-            else                     noneCount++;
-            visibleItems.push(item);
+            if      (cls === 'HR') hrCount++;
+            else if (cls === 'MR') mrCount++;
+            else if (cls === 'LR') lrCount++;
+            else                   noneCount++;
+
+            // Group by district
+            const distName = item.dis || 'Unknown';
+            if (!districtMap[distName]) districtMap[distName] = { total:0, hr:0, mr:0, lr:0 };
+            districtMap[distName].total++;
+            if      (cls === 'HR') districtMap[distName].hr++;
+            else if (cls === 'MR') districtMap[distName].mr++;
+            else if (cls === 'LR') districtMap[distName].lr++;
         }
     }
 
-    // Update KPI cards with animation
+    // Update In-View KPIs with animated count
     animateKpi(kpiMapped, totalMapped);
     animateKpi(kpiHr,     hrCount);
     animateKpi(kpiMr,     mrCount);
     animateKpi(kpiLr,     lrCount);
+
+    // Update total KPI (immutable — from summary.json)
+    if (summaryStats) {
+        const kpiTotal = document.getElementById('kpi-total');
+        if (kpiTotal && !kpiTotal.dataset.set) {
+            kpiTotal.dataset.set = '1';
+            kpiTotal.innerHTML = summaryStats.total_mapped.toLocaleString() +
+                '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>';
+        }
+    }
 
     // Update proportional risk bar
     if (riskBarCont && totalMapped > 0) {
@@ -2155,36 +2188,34 @@ function updateViewportStats() {
         if (barNone) barNone.style.width = pct(noneCount);
     }
 
-    // Sort by risk priority: HR first, then MR, LR, None
-    const riskOrder = { HR: 0, MR: 1, LR: 2, NONE: 3 };
-    visibleItems.sort((a, b) => riskOrder[classifyRisk(a.r)] - riskOrder[classifyRisk(b.r)]);
-
-    // Populate incident table (top 20 in view)
+    // Populate district-wise table
     if (tbody) {
-        if (visibleItems.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#475569;padding:12px 0;">No incidents in current view</td></tr>';
+        if (totalMapped === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#475569;padding:12px 0;">No incidents in current view</td></tr>';
         } else {
-            const top = visibleItems.slice(0, 20);
-            tbody.innerHTML = top.map(item => {
-                const name    = (item.n || '—').length > 22 ? item.n.slice(0, 22) + '…' : (item.n || '—');
-                const locStr  = `${item.lat.toFixed(4)}, ${item.lon.toFixed(4)}`;
-                return `<tr style="cursor:pointer;" onclick="map.flyTo({center:[${item.lon},${item.lat}],zoom:14,duration:1000});showToast('Flying to: ${(item.n||'').replace(/'/g,'')}','success')">
-                    <td style="font-size:0.7rem;font-family:monospace;color:#e2e8f0;">${name}</td>
-                    <td>${riskBadge(item.r)}</td>
-                    <td style="font-size:0.65rem;color:#64748b;">${locStr}</td>
+            // Sort districts by HR count desc, then total desc
+            const districts = Object.entries(districtMap).sort((a, b) => {
+                if (b[1].hr !== a[1].hr) return b[1].hr - a[1].hr;
+                return b[1].total - a[1].total;
+            });
+            tbody.innerHTML = districts.map(([name, d]) => {
+                return `<tr style="cursor:pointer;" onclick="flyToDistrict('${name.replace(/'/g, "\\'")}')"
+                    title="Click to fly to ${name} District">
+                    <td style="font-size:0.72rem;color:#e2e8f0;font-weight:500;">${name}</td>
+                    <td style="font-size:0.72rem;color:#a78bfa;font-weight:600;">${d.total}</td>
+                    <td style="font-size:0.72rem;color:#f87171;">${d.hr || '—'}</td>
+                    <td style="font-size:0.72rem;color:#fbbf24;">${d.mr || '—'}</td>
+                    <td style="font-size:0.72rem;color:#4ade80;">${d.lr || '—'}</td>
                 </tr>`;
             }).join('');
-
-            if (visibleItems.length > 20) {
-                tbody.innerHTML += `<tr><td colspan="3" style="text-align:center;color:#475569;font-size:0.65rem;padding:6px 0;">+ ${(visibleItems.length - 20).toLocaleString()} more — zoom in to narrow results</td></tr>`;
-            }
         }
     }
 
     // Footer timestamp
     if (footer) {
         const now = new Date();
-        footer.textContent = `Updated ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')} · ${totalMapped.toLocaleString()} total`;
+        const total = summaryStats ? summaryStats.total_mapped.toLocaleString() : totalMapped.toLocaleString();
+        footer.textContent = `Updated ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')} · Showing ${totalMapped.toLocaleString()} of ${total}`;
     }
 }
 
