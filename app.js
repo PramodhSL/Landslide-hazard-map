@@ -2186,61 +2186,142 @@ map.on('moveend', () => {
 })();
 
 // =====================================================
-// Advanced Query Logic
+// Advanced Query Logic (Cascading Dropdowns)
 // =====================================================
 
+function cleanName(str) {
+    if (!str) return '';
+    return str.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+}
 
-function populateQueryDropdowns() {
+// Data structures to hold hierarchy
+let districtToDSDs = {};
+let dsdToGNDs = {};
+let allDistricts = new Set();
+
+function initQueryDropdowns() {
     if (!localSearchIndex || localSearchIndex.length === 0) return;
     
-    const distSelect = document.getElementById('query-district');
-    const dsdSelect = document.getElementById('query-dsd');
-    const gndSelect = document.getElementById('query-gnd');
-    if (!distSelect || !dsdSelect || !gndSelect) return;
-    
-    const districts = new Set();
-    const dsds = new Set();
-    const gnds = new Set();
-    
+    // Build hierarchy
     localSearchIndex.forEach(item => {
-        if (item.dis && item.dis !== 'nan' && item.dis !== 'Unknown') districts.add(item.dis.trim());
-        if (item.d && item.d !== 'nan' && item.d.trim() !== '') dsds.add(item.d.trim());
-        if (item.g && item.g !== 'nan' && item.g.trim() !== '') gnds.add(item.g.trim());
+        let dist = item.dis && item.dis !== 'nan' && item.dis !== 'Unknown' ? cleanName(item.dis) : '';
+        let dsd = item.d && item.d !== 'nan' && item.d.trim() !== '' ? cleanName(item.d) : '';
+        let gnd = item.g && item.g !== 'nan' && item.g.trim() !== '' ? cleanName(item.g) : '';
+        
+        if (dist) {
+            allDistricts.add(dist);
+            if (!districtToDSDs[dist]) districtToDSDs[dist] = new Set();
+            if (dsd) {
+                districtToDSDs[dist].add(dsd);
+                if (!dsdToGNDs[dsd]) dsdToGNDs[dsd] = new Set();
+                if (gnd) dsdToGNDs[dsd].add(gnd);
+            }
+        }
     });
-    
-    const buildOptions = (set, selectEl) => {
-        const currentVal = selectEl.value;
-        const options = Array.from(set).sort();
-        // Keep the first default option
-        const defaultOption = selectEl.options[0].outerHTML;
-        selectEl.innerHTML = defaultOption + options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
-        if (options.includes(currentVal)) selectEl.value = currentVal;
-    };
-    
-    buildOptions(districts, distSelect);
-    buildOptions(dsds, dsdSelect);
-    buildOptions(gnds, gndSelect);
+
+    // Populate Districts
+    const distSelect = document.getElementById('query-district');
+    if (distSelect && distSelect.options.length <= 1) {
+        buildOptions(allDistricts, distSelect);
+    }
     
     // Attach listeners
     ['query-district', 'query-risk', 'query-dsd', 'query-gnd'].forEach(id => {
         const el = document.getElementById(id);
         if (el && !el.dataset.listenerAttached) {
             el.dataset.listenerAttached = "1";
-            el.addEventListener('change', applyAdvancedFilters);
+            el.addEventListener('change', handleFilterChange);
         }
     });
     
     const resetBtn = document.getElementById('reset-filters');
     if (resetBtn && !resetBtn.dataset.listenerAttached) {
         resetBtn.dataset.listenerAttached = "1";
-        resetBtn.addEventListener('click', () => {
-            document.getElementById('query-district').value = '';
-            document.getElementById('query-risk').value = '';
-            document.getElementById('query-dsd').value = '';
-            document.getElementById('query-gnd').value = '';
-            applyAdvancedFilters();
-        });
+        resetBtn.addEventListener('click', resetAllFilters);
     }
+    
+    // Initial state
+    updateDropdownStates();
+}
+
+function buildOptions(set, selectEl) {
+    if (!selectEl) return;
+    const currentVal = selectEl.value;
+    const options = Array.from(set).sort();
+    const defaultOption = selectEl.options[0].outerHTML;
+    selectEl.innerHTML = defaultOption + options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+    if (options.includes(currentVal)) selectEl.value = currentVal;
+}
+
+function updateDropdownStates() {
+    const distSelect = document.getElementById('query-district');
+    const dsdSelect = document.getElementById('query-dsd');
+    const gndSelect = document.getElementById('query-gnd');
+    if (!distSelect || !dsdSelect || !gndSelect) return;
+    
+    const selectedDist = distSelect.value;
+    const selectedDSD = dsdSelect.value;
+    
+    // If no district selected, disable DSD and GND
+    if (!selectedDist) {
+        dsdSelect.value = '';
+        gndSelect.value = '';
+        dsdSelect.disabled = true;
+        gndSelect.disabled = true;
+        dsdSelect.innerHTML = dsdSelect.options[0].outerHTML;
+        gndSelect.innerHTML = gndSelect.options[0].outerHTML;
+    } else {
+        dsdSelect.disabled = false;
+        // Rebuild DSD based on District (if it was just selected)
+        if (dsdSelect.options.length <= 1 || !Array.from(districtToDSDs[selectedDist] || []).includes(dsdSelect.options[1]?.value)) {
+            buildOptions(districtToDSDs[selectedDist] || new Set(), dsdSelect);
+        }
+        
+        // If no DSD selected, disable GND
+        if (!selectedDSD) {
+            gndSelect.value = '';
+            gndSelect.disabled = true;
+            gndSelect.innerHTML = gndSelect.options[0].outerHTML;
+        } else {
+            gndSelect.disabled = false;
+            if (gndSelect.options.length <= 1 || !Array.from(dsdToGNDs[selectedDSD] || []).includes(gndSelect.options[1]?.value)) {
+                buildOptions(dsdToGNDs[selectedDSD] || new Set(), gndSelect);
+            }
+        }
+    }
+    
+    // Update visual style for disabled selects
+    [dsdSelect, gndSelect].forEach(el => {
+        el.style.opacity = el.disabled ? '0.5' : '1';
+        el.style.cursor = el.disabled ? 'not-allowed' : 'pointer';
+    });
+}
+
+function resetAllFilters() {
+    document.getElementById('query-district').value = '';
+    document.getElementById('query-risk').value = '';
+    document.getElementById('query-dsd').value = '';
+    document.getElementById('query-gnd').value = '';
+    
+    updateDropdownStates();
+    applyAdvancedFilters();
+}
+
+function handleFilterChange(e) {
+    const targetId = e.target.id;
+    if (targetId === 'query-district') {
+        document.getElementById('query-dsd').value = '';
+        document.getElementById('query-gnd').value = '';
+    } else if (targetId === 'query-dsd') {
+        document.getElementById('query-gnd').value = '';
+    }
+    
+    updateDropdownStates();
+    applyAdvancedFilters();
+}
+
+function populateQueryDropdowns() {
+    initQueryDropdowns();
 }
 
 function applyAdvancedFilters() {
@@ -2249,11 +2330,15 @@ function applyAdvancedFilters() {
     currentFilters.d = document.getElementById('query-dsd').value;
     currentFilters.g = document.getElementById('query-gnd').value;
     
-    // Mapbox GL filter syntax
+    // Mapbox GL filter syntax (case insensitive match workaround)
     const filterArray = ['all'];
     
     if (currentFilters.dis) {
-        filterArray.push(['==', ['get', 'District'], currentFilters.dis]);
+        // District field in MapLibre might be capitalized differently, check both raw and Title Case
+        filterArray.push(['any', 
+            ['==', ['get', 'District'], currentFilters.dis],
+            ['==', ['upcase', ['coalesce', ['get', 'District'], '']], currentFilters.dis.toUpperCase()]
+        ]);
     }
     
     if (currentFilters.r) {
@@ -2278,13 +2363,18 @@ function applyAdvancedFilters() {
     }
     
     if (currentFilters.d) {
-        filterArray.push(['==', ['get', 'DSD'], currentFilters.d]);
+        filterArray.push(['any', 
+            ['==', ['get', 'DSD'], currentFilters.d],
+            ['==', ['upcase', ['coalesce', ['get', 'DSD'], '']], currentFilters.d.toUpperCase()]
+        ]);
     }
     
     if (currentFilters.g) {
         filterArray.push(['any', 
             ['==', ['get', 'GND'], currentFilters.g],
-            ['==', ['get', 'GND_Name'], currentFilters.g]
+            ['==', ['get', 'GND_Name'], currentFilters.g],
+            ['==', ['upcase', ['coalesce', ['get', 'GND'], '']], currentFilters.g.toUpperCase()],
+            ['==', ['upcase', ['coalesce', ['get', 'GND_Name'], '']], currentFilters.g.toUpperCase()]
         ]);
     }
     

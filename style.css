@@ -284,16 +284,28 @@
         }
 
         .query-select {
-            background: rgba(30, 41, 59, 0.8);
+            background: rgba(30, 41, 59, 0.8) url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center;
+            background-size: 16px 16px;
             border: 1px solid rgba(148, 163, 184, 0.2);
             color: #e2e8f0;
-            padding: 8px 12px;
+            padding: 8px 28px 8px 8px; /* Extra padding on right for arrow */
             border-radius: 8px;
             font-size: 0.8rem;
             font-family: inherit;
             outline: none;
             transition: all 0.2s ease;
             appearance: none;
+            -webkit-appearance: none;
+            width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .query-select option {
+            background-color: #1e293b;
+            color: #e2e8f0;
+            white-space: normal;
         }
 
         .query-select:focus {
