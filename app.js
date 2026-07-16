@@ -10,7 +10,7 @@ const DATA_BASE_URL = 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev';
 // Local search and summary statistics variables
 let localSearchIndex = [];
 let summaryStats = null;
-let currentFilters = { dis: '', r: '', d: '', g: '' };
+let currentFilters = { dis: '', r: '', d: '', g: '', t: '' };
 
 
 let protocol = new pmtiles.Protocol();
@@ -2053,9 +2053,11 @@ function updateViewportStats() {
         const lat  = item.lat;
         if (lng >= west && lng <= east && lat >= south && lat <= north) {
             // Apply advanced filters so dashboard matches the filtered map dots
-            if (currentFilters.dis && item.dis !== currentFilters.dis) continue;
-            if (currentFilters.d && item.d !== currentFilters.d) continue;
-            if (currentFilters.g && item.g !== currentFilters.g) continue;
+            // Use case-insensitive comparison because dropdown values are Title Case via cleanName()
+            if (currentFilters.dis && (item.dis || '').toLowerCase() !== currentFilters.dis.toLowerCase()) continue;
+            if (currentFilters.d && (item.d || '').toLowerCase() !== currentFilters.d.toLowerCase()) continue;
+            if (currentFilters.g && (item.g || '').toLowerCase() !== currentFilters.g.toLowerCase()) continue;
+            if (currentFilters.t && (item.t || '').toLowerCase() !== currentFilters.t.toLowerCase()) continue;
             
             const cls = classifyRisk(item.r);
             
@@ -2191,13 +2193,16 @@ map.on('moveend', () => {
 
 function cleanName(str) {
     if (!str) return '';
-    return str.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    // Remove Zero-Width Joiners (ZWJ/ZWNJ) and trim extra spaces
+    str = str.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
+    return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 }
 
 // Data structures to hold hierarchy
 let districtToDSDs = {};
 let dsdToGNDs = {};
 let allDistricts = new Set();
+let allTypes = new Set();
 
 function initQueryDropdowns() {
     if (!localSearchIndex || localSearchIndex.length === 0) return;
@@ -2207,6 +2212,9 @@ function initQueryDropdowns() {
         let dist = item.dis && item.dis !== 'nan' && item.dis !== 'Unknown' ? cleanName(item.dis) : '';
         let dsd = item.d && item.d !== 'nan' && item.d.trim() !== '' ? cleanName(item.d) : '';
         let gnd = item.g && item.g !== 'nan' && item.g.trim() !== '' ? cleanName(item.g) : '';
+        let type = item.t && item.t !== 'nan' && item.t.trim() !== '' ? cleanName(item.t) : '';
+        
+        if (type) allTypes.add(type);
         
         if (dist) {
             allDistricts.add(dist);
@@ -2219,14 +2227,18 @@ function initQueryDropdowns() {
         }
     });
 
-    // Populate Districts
+    // Populate Districts and Types
     const distSelect = document.getElementById('query-district');
     if (distSelect && distSelect.options.length <= 1) {
         buildOptions(allDistricts, distSelect);
     }
+    const typeSelect = document.getElementById('query-type');
+    if (typeSelect && typeSelect.options.length <= 1) {
+        buildOptions(allTypes, typeSelect);
+    }
     
     // Attach listeners
-    ['query-district', 'query-risk', 'query-dsd', 'query-gnd'].forEach(id => {
+    ['query-district', 'query-risk', 'query-dsd', 'query-gnd', 'query-type'].forEach(id => {
         const el = document.getElementById(id);
         if (el && !el.dataset.listenerAttached) {
             el.dataset.listenerAttached = "1";
@@ -2302,6 +2314,7 @@ function resetAllFilters() {
     document.getElementById('query-risk').value = '';
     document.getElementById('query-dsd').value = '';
     document.getElementById('query-gnd').value = '';
+    document.getElementById('query-type').value = '';
     
     updateDropdownStates();
     applyAdvancedFilters();
@@ -2329,6 +2342,7 @@ function applyAdvancedFilters() {
     currentFilters.r = document.getElementById('query-risk').value;
     currentFilters.d = document.getElementById('query-dsd').value;
     currentFilters.g = document.getElementById('query-gnd').value;
+    currentFilters.t = document.getElementById('query-type').value;
     
     // Mapbox GL filter syntax (case insensitive match workaround)
     const filterArray = ['all'];
@@ -2360,6 +2374,13 @@ function applyAdvancedFilters() {
                 ['in', 'LOW', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
             ]);
         }
+    }
+    
+    if (currentFilters.t) {
+        filterArray.push(['any', 
+            ['==', ['get', 'Nature of the disaster'], currentFilters.t],
+            ['==', ['upcase', ['coalesce', ['get', 'Nature of the disaster'], '']], currentFilters.t.toUpperCase()]
+        ]);
     }
     
     if (currentFilters.d) {
