@@ -10,6 +10,7 @@ const DATA_BASE_URL = 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev';
 // Local search and summary statistics variables
 let localSearchIndex = [];
 let summaryStats = null;
+let currentFilters = { dis: '', r: '', d: '', g: '' };
 
 
 let protocol = new pmtiles.Protocol();
@@ -519,7 +520,8 @@ function showPopup(e) {
     let content = '';
 
     if (layerId === 'inspection_points') {
-        const refNo = props['Ref. Code'] || props['Ref. No.'] || props['Reference Number'] || props['Ref No'] || props['Name'] || 'N/A';
+        const rawRef = props['Ref. Code'] || props['Ref. No.'] || props['Reference Number'] || props['Ref No'] || props['Name'] || 'N/A';
+        const refNo = String(rawRef).replace(/NBRO/g, 'NBRI');
         const risk = props['HR (Priority level)'] || props['Risk level'] || 'N/A';
 
         // Badge styling based on risk
@@ -685,7 +687,19 @@ safeAddEventListener('layer-inspection', 'change', (e) => {
     if (e.target.checked && !window.inspectionLoaded) window.loadInspection();
     const visibility = e.target.checked ? 'visible' : 'none';
     if (map.getLayer('inspection_points')) map.setLayoutProperty('inspection_points', 'visibility', visibility);
+
+    // Advanced Query & Dashboard Visibility logic
+    const advPanel = document.getElementById('advanced-query-panel');
+    const dashPanel = document.getElementById('dashboard-panel');
+    if (advPanel) advPanel.style.display = e.target.checked ? 'flex' : 'none';
+    if (dashPanel) dashPanel.style.display = e.target.checked ? 'block' : 'none';
+    
+    // Ensure search index is loaded so we can populate query dropdowns
+    if (e.target.checked && localSearchIndex.length === 0) {
+        loadSearchIndex();
+    }
 });
+
 
 const tizToggleBtn = document.getElementById('layer-tiz');
 if (tizToggleBtn) {
@@ -1067,7 +1081,8 @@ async function searchLocation(query) {
     }
 
     // 2. Search Local Index (Ref Numbers, GND name, DSD)
-    const q = query.toLowerCase().trim();
+    // NBRI mapped to NBRO so the search works internally with legacy data
+    const q = query.toLowerCase().trim().replace('nbri', 'nbro');
     const localMatches = [];
     if (localSearchIndex && localSearchIndex.length > 0) {
         for (const item of localSearchIndex) {
@@ -1082,7 +1097,7 @@ async function searchLocation(query) {
     }
 
     const formattedLocal = localMatches.map(m => ({
-        display_name: `${m.n} - GND: ${m.g || 'N/A'}, DSD: ${m.d || 'N/A'} (${m.dis} District)`,
+        display_name: `${m.n.replace(/NBRO/g, 'NBRI')} - GND: ${m.g || 'N/A'}, DSD: ${m.d || 'N/A'} (${m.dis} District)`,
         lat: m.lat,
         lon: m.lon,
         isLocal: true,
@@ -1873,8 +1888,10 @@ async function loadSearchIndex() {
             }
         }
         updateViewportStats();
+        populateQueryDropdowns();
     } catch (e) {
-        console.error('Error loading search index:', e);
+        console.error('Failed to load search index:', e);
+    } finally {
         _searchIndexLoading = false; // Allow retry on next keystroke after network failure
     }
 }
@@ -2035,8 +2052,20 @@ function updateViewportStats() {
         const lng  = item.lon;
         const lat  = item.lat;
         if (lng >= west && lng <= east && lat >= south && lat <= north) {
-            totalMapped++;
+            // Apply advanced filters so dashboard matches the filtered map dots
+            if (currentFilters.dis && item.dis !== currentFilters.dis) continue;
+            if (currentFilters.d && item.d !== currentFilters.d) continue;
+            if (currentFilters.g && item.g !== currentFilters.g) continue;
+            
             const cls = classifyRisk(item.r);
+            
+            if (currentFilters.r) {
+                if (currentFilters.r === 'HR' && cls !== 'HR') continue;
+                if (currentFilters.r === 'MR' && cls !== 'MR') continue;
+                if (currentFilters.r === 'LR' && cls !== 'LR') continue;
+            }
+            
+            totalMapped++;
             if      (cls === 'HR') hrCount++;
             else if (cls === 'MR') mrCount++;
             else if (cls === 'LR') lrCount++;
@@ -2155,6 +2184,118 @@ map.on('moveend', () => {
         }, { passive: true });
     });
 })();
+
+// =====================================================
+// Advanced Query Logic
+// =====================================================
+
+
+function populateQueryDropdowns() {
+    if (!localSearchIndex || localSearchIndex.length === 0) return;
+    
+    const distSelect = document.getElementById('query-district');
+    const dsdSelect = document.getElementById('query-dsd');
+    const gndSelect = document.getElementById('query-gnd');
+    if (!distSelect || !dsdSelect || !gndSelect) return;
+    
+    const districts = new Set();
+    const dsds = new Set();
+    const gnds = new Set();
+    
+    localSearchIndex.forEach(item => {
+        if (item.dis && item.dis !== 'nan' && item.dis !== 'Unknown') districts.add(item.dis.trim());
+        if (item.d && item.d !== 'nan' && item.d.trim() !== '') dsds.add(item.d.trim());
+        if (item.g && item.g !== 'nan' && item.g.trim() !== '') gnds.add(item.g.trim());
+    });
+    
+    const buildOptions = (set, selectEl) => {
+        const currentVal = selectEl.value;
+        const options = Array.from(set).sort();
+        // Keep the first default option
+        const defaultOption = selectEl.options[0].outerHTML;
+        selectEl.innerHTML = defaultOption + options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+        if (options.includes(currentVal)) selectEl.value = currentVal;
+    };
+    
+    buildOptions(districts, distSelect);
+    buildOptions(dsds, dsdSelect);
+    buildOptions(gnds, gndSelect);
+    
+    // Attach listeners
+    ['query-district', 'query-risk', 'query-dsd', 'query-gnd'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && !el.dataset.listenerAttached) {
+            el.dataset.listenerAttached = "1";
+            el.addEventListener('change', applyAdvancedFilters);
+        }
+    });
+    
+    const resetBtn = document.getElementById('reset-filters');
+    if (resetBtn && !resetBtn.dataset.listenerAttached) {
+        resetBtn.dataset.listenerAttached = "1";
+        resetBtn.addEventListener('click', () => {
+            document.getElementById('query-district').value = '';
+            document.getElementById('query-risk').value = '';
+            document.getElementById('query-dsd').value = '';
+            document.getElementById('query-gnd').value = '';
+            applyAdvancedFilters();
+        });
+    }
+}
+
+function applyAdvancedFilters() {
+    currentFilters.dis = document.getElementById('query-district').value;
+    currentFilters.r = document.getElementById('query-risk').value;
+    currentFilters.d = document.getElementById('query-dsd').value;
+    currentFilters.g = document.getElementById('query-gnd').value;
+    
+    // Mapbox GL filter syntax
+    const filterArray = ['all'];
+    
+    if (currentFilters.dis) {
+        filterArray.push(['==', ['get', 'District'], currentFilters.dis]);
+    }
+    
+    if (currentFilters.r) {
+        if (currentFilters.r === 'HR') {
+            filterArray.push(['any', 
+                ['in', 'HR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                ['in', 'HR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                ['in', 'P1', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                ['in', 'HIGH', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
+            ]);
+        } else if (currentFilters.r === 'MR') {
+            filterArray.push(['any', 
+                ['in', 'MR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                ['in', 'MEDIUM', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
+            ]);
+        } else if (currentFilters.r === 'LR') {
+            filterArray.push(['any', 
+                ['in', 'LR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                ['in', 'LOW', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
+            ]);
+        }
+    }
+    
+    if (currentFilters.d) {
+        filterArray.push(['==', ['get', 'DSD'], currentFilters.d]);
+    }
+    
+    if (currentFilters.g) {
+        filterArray.push(['any', 
+            ['==', ['get', 'GND'], currentFilters.g],
+            ['==', ['get', 'GND_Name'], currentFilters.g]
+        ]);
+    }
+    
+    // Apply filter to map
+    if (map.getLayer('inspection_points')) {
+        map.setFilter('inspection_points', filterArray.length > 1 ? filterArray : null);
+    }
+    
+    // Trigger viewport update so Executive Summary matches the filter!
+    updateViewportStats();
+}
 
 // =====================================================
 // LAYER LOADING SPINNER

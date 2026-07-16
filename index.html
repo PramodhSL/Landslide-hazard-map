@@ -78,9 +78,32 @@
             </div>
             <div id="search-results"></div>
         </div>
+        
+        <!-- Advanced Query Panel (Initially Hidden) -->
+        <div id="advanced-query-panel" class="advanced-query-panel" style="display: none;">
+            <div class="query-header">🔍 Filter Investigations</div>
+            <div class="query-filters">
+                <select id="query-district" class="query-select">
+                    <option value="">All Districts</option>
+                </select>
+                <select id="query-risk" class="query-select">
+                    <option value="">All Risk Levels</option>
+                    <option value="HR">High Risk</option>
+                    <option value="MR">Medium Risk</option>
+                    <option value="LR">Low Risk</option>
+                </select>
+                <select id="query-dsd" class="query-select">
+                    <option value="">All DSDs</option>
+                </select>
+                <select id="query-gnd" class="query-select">
+                    <option value="">All GNDs</option>
+                </select>
+            </div>
+            <button id="reset-filters" class="query-reset-btn">Reset Filters</button>
+        </div>
     </div>
     <!-- Executive Summary Dashboard -->
-    <div class="dashboard-panel collapsed" id="dashboard-panel">
+    <div class="dashboard-panel collapsed" id="dashboard-panel" style="display: none;">
         <div class="dashboard-header" id="dashboard-toggle">
             <h3>📊 Executive Summary</h3>
             <button class="dashboard-toggle-btn">▼</button>

@@ -244,10 +244,77 @@
         }
 
         .no-results {
-            padding: 1.5rem 1rem;
+            padding: 16px;
             text-align: center;
-            color: #64748b;
             font-size: 0.9rem;
+            color: #94a3b8;
+        }
+
+        /* Advanced Query Panel */
+        .advanced-query-panel {
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(12px);
+            border-radius: 0 0 16px 16px;
+            padding: 1rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-top: none;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: -16px;
+            padding-top: 24px;
+            position: relative;
+            z-index: 99;
+        }
+
+        .query-header {
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .query-filters {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .query-select {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            color: #e2e8f0;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.2s ease;
+            appearance: none;
+        }
+
+        .query-select:focus {
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+        }
+
+        .query-reset-btn {
+            background: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .query-reset-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
         }
 
         .controls-panel {
