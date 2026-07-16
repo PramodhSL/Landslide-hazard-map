@@ -1009,11 +1009,19 @@ searchInput.addEventListener('input', (e) => {
     }, 300);
 });
 
-// Allow immediate search when pressing Enter
+// Allow immediate search or selecting first result when pressing Enter
 searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         e.preventDefault();
         clearTimeout(searchTimeout);
+        
+        // If there's a result currently displayed, Enter should select the first one
+        const firstResult = searchResults.querySelector('.search-result-item');
+        if (firstResult && searchResults.style.display !== 'none') {
+            firstResult.click();
+            return;
+        }
+
         const query = searchInput.value.trim();
         if (query.length >= 1) {
             searchLocation(query);
@@ -1044,28 +1052,13 @@ async function searchLocation(query) {
         const lon = parseFloat(match[2]);
 
         if (lon >= 79.5 && lon <= 82.0 && lat >= 5.9 && lat <= 9.9) {
-            searchResults.style.display = 'none';
-
-            map.flyTo({
-                center: [lon, lat],
-                zoom: 14,
-                duration: 1500
-            });
-
-            if (searchMarker) {
-                searchMarker.remove();
-            }
-
-            searchMarker = new maplibregl.Marker({ color: '#06b6d4' })
-                .setLngLat([lon, lat])
-                .setPopup(
-                    new maplibregl.Popup().setHTML(
-                        `<div class="popup-title">GPS Location</div>
-                                <div class="popup-info"><b>Latitude:</b> ${lat.toFixed(6)}<br><b>Longitude:</b> ${lon.toFixed(6)}</div>`
-                    )
-                )
-                .addTo(map)
-                .togglePopup();
+            displayResults([{
+                display_name: `GPS Location - Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}`,
+                lat: lat,
+                lon: lon,
+                isLocal: true,
+                risk: 'N/A'
+            }]);
             return;
         } else {
             searchResults.innerHTML = '<div class="no-results" style="color:#f59e0b;">⚠️ Coordinates are outside Sri Lanka bounds</div>';
