@@ -10,7 +10,7 @@ const DATA_BASE_URL = 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev';
 // Local search and summary statistics variables
 let localSearchIndex = [];
 let summaryStats = null;
-let currentFilters = { dis: '', r: '', d: '', g: '', t: '' };
+let currentFilters = { dis: '', r: '', d: '', g: '' };
 
 
 let protocol = new pmtiles.Protocol();
@@ -2057,7 +2057,6 @@ function updateViewportStats() {
             if (currentFilters.dis && (item.dis || '').toLowerCase() !== currentFilters.dis.toLowerCase()) continue;
             if (currentFilters.d && (item.d || '').toLowerCase() !== currentFilters.d.toLowerCase()) continue;
             if (currentFilters.g && (item.g || '').toLowerCase() !== currentFilters.g.toLowerCase()) continue;
-            if (currentFilters.t && (item.t || '').toLowerCase() !== currentFilters.t.toLowerCase()) continue;
             
             const cls = classifyRisk(item.r);
             
@@ -2202,7 +2201,6 @@ function cleanName(str) {
 let districtToDSDs = {};
 let dsdToGNDs = {};
 let allDistricts = new Set();
-let allTypes = new Set();
 
 function initQueryDropdowns() {
     if (!localSearchIndex || localSearchIndex.length === 0) return;
@@ -2212,9 +2210,6 @@ function initQueryDropdowns() {
         let dist = item.dis && item.dis !== 'nan' && item.dis !== 'Unknown' ? cleanName(item.dis) : '';
         let dsd = item.d && item.d !== 'nan' && item.d.trim() !== '' ? cleanName(item.d) : '';
         let gnd = item.g && item.g !== 'nan' && item.g.trim() !== '' ? cleanName(item.g) : '';
-        let type = item.t && item.t !== 'nan' && item.t.trim() !== '' ? cleanName(item.t) : '';
-        
-        if (type) allTypes.add(type);
         
         if (dist) {
             allDistricts.add(dist);
@@ -2227,18 +2222,14 @@ function initQueryDropdowns() {
         }
     });
 
-    // Populate Districts and Types
+    // Populate Districts
     const distSelect = document.getElementById('query-district');
     if (distSelect && distSelect.options.length <= 1) {
         buildOptions(allDistricts, distSelect);
     }
-    const typeSelect = document.getElementById('query-type');
-    if (typeSelect && typeSelect.options.length <= 1) {
-        buildOptions(allTypes, typeSelect);
-    }
     
     // Attach listeners
-    ['query-district', 'query-risk', 'query-dsd', 'query-gnd', 'query-type'].forEach(id => {
+    ['query-district', 'query-risk', 'query-dsd', 'query-gnd'].forEach(id => {
         const el = document.getElementById(id);
         if (el && !el.dataset.listenerAttached) {
             el.dataset.listenerAttached = "1";
@@ -2314,7 +2305,6 @@ function resetAllFilters() {
     document.getElementById('query-risk').value = '';
     document.getElementById('query-dsd').value = '';
     document.getElementById('query-gnd').value = '';
-    document.getElementById('query-type').value = '';
     
     updateDropdownStates();
     applyAdvancedFilters();
@@ -2342,7 +2332,6 @@ function applyAdvancedFilters() {
     currentFilters.r = document.getElementById('query-risk').value;
     currentFilters.d = document.getElementById('query-dsd').value;
     currentFilters.g = document.getElementById('query-gnd').value;
-    currentFilters.t = document.getElementById('query-type').value;
     
     // Mapbox GL filter syntax (case insensitive match workaround)
     const filterArray = ['all'];
@@ -2376,17 +2365,17 @@ function applyAdvancedFilters() {
         }
     }
     
-    if (currentFilters.t) {
-        filterArray.push(['any', 
-            ['==', ['get', 'Nature of the disaster'], currentFilters.t],
-            ['==', ['upcase', ['coalesce', ['get', 'Nature of the disaster'], '']], currentFilters.t.toUpperCase()]
-        ]);
-    }
-    
     if (currentFilters.d) {
+        // Because zero-width joiners and case mismatch might exist in the raw geojson properties
+        // compared to the cleaned currentFilters.d, we use a regex or a very lenient string match if possible.
+        // Mapbox GL JS does not have regex filters, but we can check if indexof the original cleaned is > -1,
+        // however Mapbox expressions are tricky. The best approach is to fix the GeoJSON beforehand, 
+        // but here we can try to compare against upcased DSD.
+        // Wait, Mapbox doesn't support stripping characters dynamically.
         filterArray.push(['any', 
             ['==', ['get', 'DSD'], currentFilters.d],
-            ['==', ['upcase', ['coalesce', ['get', 'DSD'], '']], currentFilters.d.toUpperCase()]
+            ['==', ['upcase', ['coalesce', ['get', 'DSD'], '']], currentFilters.d.toUpperCase()],
+            ['==', ['downcase', ['coalesce', ['get', 'DSD'], '']], currentFilters.d.toLowerCase()]
         ]);
     }
     
