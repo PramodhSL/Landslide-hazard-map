@@ -342,6 +342,21 @@
             z-index: 1500;
             min-width: 280px;
             max-width: 90vw;
+            max-height: calc(100vh - 12rem); /* Leave space for FABs at the bottom */
+            overflow-y: auto;
+        }
+
+        /* Custom scrollbar for Map Controls panel */
+        .controls-panel::-webkit-scrollbar {
+            width: 6px;
+        }
+        .controls-panel::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+        .controls-panel::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.5);
+            border-radius: 4px;
         }
 
         .controls-panel h3 {
@@ -631,6 +646,131 @@
 
         .fab-btn:hover .fab-tooltip {
             opacity: 1;
+        }
+
+        /* Tools Panel */
+        .tools-panel {
+            position: fixed;
+            bottom: 5.5rem; /* Above the FABs */
+            right: 1.5rem;
+            z-index: 1000;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 250px;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            transform-origin: bottom right;
+            animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .tools-panel.active {
+            display: flex;
+        }
+
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.9) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .tools-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+        }
+
+        .tools-panel-header h4 {
+            margin: 0;
+            color: #e2e8f0;
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        .tools-panel-header .close-btn {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 1.5rem;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+
+        .tools-panel-header .close-btn:hover {
+            color: #ef4444;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .tools-panel-content {
+            display: flex;
+            flex-direction: column;
+            padding: 8px 0;
+        }
+
+        .tool-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: transparent;
+            border: none;
+            width: 100%;
+            cursor: pointer;
+            transition: background 0.2s;
+            color: #cbd5e1;
+            font-size: 0.9rem;
+            text-align: left;
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+        }
+
+        .tool-menu-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+        }
+
+        .tool-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            color: white;
+            flex-shrink: 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        /* Mobile specific bottom-sheet for Tools Panel */
+        @media (max-width: 768px) {
+            .tools-panel {
+                bottom: 0;
+                right: 0;
+                width: 100%;
+                border-radius: 20px 20px 0 0;
+                border-left: none;
+                border-right: none;
+                border-bottom: none;
+                transform-origin: bottom center;
+                animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+                padding-bottom: env(safe-area-inset-bottom);
+            }
+            @keyframes slideUp {
+                from { transform: translateY(100%); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
+            }
         }
 
         #locate-btn {
@@ -994,7 +1134,7 @@
             }
 
             .maplibregl-ctrl-bottom-left {
-                bottom: 52vh;
+                bottom: calc(env(safe-area-inset-bottom, 0px) + 3.5rem);
             }
         }
 
@@ -1388,14 +1528,13 @@ input:checked + .slider:active:before { transform: translateX(18px); }
 }
 
 @media (max-width: 768px) {
+    /* Hide desktop-specific panels on mobile to save screen space */
     .dashboard-panel {
-        top: 7.5rem;
-        bottom: auto; /* switch to top-anchored on mobile so it doesn't fight FABs */
-        left: 0.5rem;
-        right: auto;
-        width: 300px;
-        max-height: 45vh;
-        z-index: 1500;
+        display: none !important;
+    }
+    
+    .advanced-query-panel {
+        display: none !important;
     }
 }
 

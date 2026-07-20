@@ -4,7 +4,7 @@
 <head>
     <script>
         // Force aggressive cache purge for returning users
-        const APP_VERSION = "v41";
+        const APP_VERSION = "v42";
         if (localStorage.getItem('lhmpVersion') !== APP_VERSION) {
             localStorage.setItem('lhmpVersion', APP_VERSION);
             if ('serviceWorker' in navigator) {
@@ -35,11 +35,11 @@
     <!-- Preload Critical Resources -->
     <link rel="preload" href="maplibre-gl.js" as="script">
     <link rel="preload" href="maplibre-gl.css" as="style">
-    <link rel="preload" href="style.css?v=1.5" as="style">
+    <link rel="preload" href="style.css?v=2.0" as="style">
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="maplibre-gl.css" rel="stylesheet" />
-    <link href="style.css?v=1.5" rel="stylesheet" />
+    <link href="style.css?v=2.0" rel="stylesheet" />
 </head>
 
 <body>
@@ -81,7 +81,10 @@
         
         <!-- Advanced Query Panel (Initially Hidden) -->
         <div id="advanced-query-panel" class="advanced-query-panel" style="display: none;">
-            <div class="query-header">🔍 Filter Investigations</div>
+            <div class="query-header" style="justify-content: space-between;">
+                <span>🔍 Filter Investigations</span>
+                <button id="close-query-btn" style="background: none; border: none; color: #94a3b8; font-size: 1.2rem; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+            </div>
             <div class="query-filters">
                 <select id="query-district" class="query-select">
                     <option value="">All Districts</option>
@@ -322,56 +325,75 @@
             </svg>
             <span class="fab-tooltip">Find Location</span>
         </button>
-        <button id="bookmark-btn" class="fab-btn" title="Bookmarks"
-            style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+        <button id="tools-menu-btn" class="fab-btn" title="More Tools">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon
-                    points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
-                </polygon>
+                <path d="M4 6h16M4 12h16M4 18h16"></path>
             </svg>
-            <span class="fab-tooltip">Bookmarks</span>
+            <span class="fab-tooltip">More Tools</span>
         </button>
-        <button id="measure-btn" class="fab-btn" title="Measure Distance">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21.54 15H17a2 2 0 0 0-2 2v4.54"></path>
-                <path d="M7 3.34V5a3 3 0 0 0 3 3v0a2 2 0 0 1 2 2v0c0 1.1.9 2 2 2v0a2 2 0 0 0 2-2v0c0-1.1.9-2 2-2h3.17">
-                </path>
-                <path d="M11 21.95V18a2 2 0 0 0-2-2v0a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05"></path>
-                <circle cx="12" cy="12" r="10"></circle>
-            </svg>
-            <span class="fab-tooltip">Measure Distance</span>
-        </button>
-        <button id="view3d-btn" class="fab-btn" title="Toggle 3D View"
-            style="background: linear-gradient(135deg, #f59e0b, #ef4444);">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m8 3 4 8 5-5 5 15H2L8 3z"></path>
-            </svg>
-            <span class="fab-tooltip">3D Terrain View</span>
-        </button>
-        <button id="share-btn" class="fab-btn" title="Share View"
-            style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="18" cy="5" r="3"></circle>
-                <circle cx="6" cy="12" r="3"></circle>
-                <circle cx="18" cy="19" r="3"></circle>
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-            </svg>
-            <span class="fab-tooltip">Share Map View</span>
-        </button>
-        <button id="fullscreen-btn" class="fab-btn" title="Toggle Fullscreen"
-            style="background: linear-gradient(135deg, #64748b, #475569);">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
-            </svg>
-            <span class="fab-tooltip">Toggle Fullscreen</span>
-        </button>
+    </div>
 
+    <!-- Tools Menu Panel -->
+    <div id="tools-panel" class="tools-panel">
+        <div class="tools-panel-header">
+            <h4>Map Tools</h4>
+            <button id="close-tools-btn" class="close-btn">&times;</button>
+        </div>
+        <div class="tools-panel-content" id="tools-panel-content">
+            <button id="view3d-btn" class="tool-menu-item">
+                <span class="tool-icon" style="background: linear-gradient(135deg, #f59e0b, #ef4444);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m8 3 4 8 5-5 5 15H2L8 3z"></path>
+                    </svg>
+                </span>
+                <span class="tool-label">3D Terrain View</span>
+            </button>
+            <button id="measure-btn" class="tool-menu-item">
+                <span class="tool-icon" style="background: linear-gradient(135deg, #06b6d4, #0891b2);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.54 15H17a2 2 0 0 0-2 2v4.54"></path>
+                        <path d="M7 3.34V5a3 3 0 0 0 3 3v0a2 2 0 0 1 2 2v0c0 1.1.9 2 2 2v0a2 2 0 0 0 2-2v0c0-1.1.9-2 2-2h3.17"></path>
+                        <path d="M11 21.95V18a2 2 0 0 0-2-2v0a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05"></path>
+                        <circle cx="12" cy="12" r="10"></circle>
+                    </svg>
+                </span>
+                <span class="tool-label">Measure Distance</span>
+            </button>
+            <button id="bookmark-btn" class="tool-menu-item">
+                <span class="tool-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                    </svg>
+                </span>
+                <span class="tool-label">Saved Bookmarks</span>
+            </button>
+            <button id="share-btn" class="tool-menu-item">
+                <span class="tool-icon" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="18" cy="5" r="3"></circle>
+                        <circle cx="6" cy="12" r="3"></circle>
+                        <circle cx="18" cy="19" r="3"></circle>
+                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                    </svg>
+                </span>
+                <span class="tool-label">Share Map View</span>
+            </button>
+            <button id="fullscreen-btn" class="tool-menu-item">
+                <span class="tool-icon" style="background: linear-gradient(135deg, #64748b, #475569);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                    </svg>
+                </span>
+                <span class="tool-label">Toggle Fullscreen</span>
+            </button>
+        </div>
     </div>
 
     <!-- Compass Indicator (shows in 3D mode) -->
@@ -503,7 +525,7 @@
 
     <script src="maplibre-gl.js"></script>
     <script src="pmtiles.js"></script>
-    <script src="app.js?v=3.0"></script>
+    <script src="app.js?v=4.0"></script>
 </body>
 
 </html>

@@ -700,6 +700,14 @@ safeAddEventListener('layer-inspection', 'change', (e) => {
     }
 });
 
+// Close button for Advanced Query Panel
+const closeQueryBtn = document.getElementById('close-query-btn');
+if (closeQueryBtn) {
+    closeQueryBtn.addEventListener('click', () => {
+        document.getElementById('advanced-query-panel').style.display = 'none';
+    });
+}
+
 
 const tizToggleBtn = document.getElementById('layer-tiz');
 if (tizToggleBtn) {
@@ -1285,7 +1293,7 @@ window.addEventListener('load', () => {
     }
 
     const isControlsCollapsed = localStorage.getItem('controlsCollapsed') === 'true';
-    if (isControlsCollapsed) {
+    if (isControlsCollapsed || (isMobile && localStorage.getItem('controlsCollapsed') === null)) {
         controlsPanel.classList.add('collapsed');
     }
 });
@@ -1324,14 +1332,38 @@ controlsToggle.addEventListener('click', () => {
 // PWA Installation Logic
 let deferredPrompt;
 const installBtn = document.createElement('button');
-installBtn.className = 'fab-btn';
+installBtn.className = 'tool-menu-item';
 installBtn.id = 'install-btn';
 installBtn.style.display = 'none'; // Hidden by default
-installBtn.style.background = 'linear-gradient(135deg, #0f172a, #334155)';
-installBtn.innerHTML = ICONS.install + '<span class="fab-tooltip">Install App</span>';
+installBtn.innerHTML = `
+    <span class="tool-icon" style="background: linear-gradient(135deg, #0f172a, #334155);">
+        ${ICONS.install}
+    </span>
+    <span class="tool-label">Install App</span>
+`;
 
-// Append to FAB container
-document.querySelector('.fab-container').appendChild(installBtn);
+// Append to Tools Menu
+document.getElementById('tools-panel-content').appendChild(installBtn);
+
+// Tools Menu Toggle Logic
+const toolsMenuBtn = document.getElementById('tools-menu-btn');
+const toolsPanel = document.getElementById('tools-panel');
+const closeToolsBtn = document.getElementById('close-tools-btn');
+
+toolsMenuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toolsPanel.classList.add('active');
+});
+
+closeToolsBtn.addEventListener('click', () => {
+    toolsPanel.classList.remove('active');
+});
+
+document.addEventListener('click', (e) => {
+    if (toolsPanel.classList.contains('active') && !toolsPanel.contains(e.target) && e.target !== toolsMenuBtn) {
+        toolsPanel.classList.remove('active');
+    }
+});
 
 window.addEventListener('beforeinstallprompt', (e) => {
     // Prevent Chrome 67 and earlier from automatically showing the prompt
