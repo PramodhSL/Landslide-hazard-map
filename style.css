@@ -777,6 +777,18 @@
             background: linear-gradient(135deg, #8b5cf6, #6366f1);
         }
 
+        #tools-menu-btn {
+            background: linear-gradient(135deg, #1e293b, #0f172a) !important;
+            color: #ffffff !important;
+            border: 1px solid rgba(139, 92, 246, 0.2) !important;
+        }
+
+        @media (max-width: 768px) {
+            .app-title-bar {
+                display: none !important;
+            }
+        }
+
         #measure-btn {
             background: linear-gradient(135deg, #10b981, #0ea5e9);
         }
