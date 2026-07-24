@@ -1,5 +1,5 @@
 let searchMarker; // Declared at top to avoid ReferenceErrors
-let controlsPanel;
+let controlsPanel = document.querySelector('.controls-panel'); // ROBUST-2: Assign early to avoid null in load handler
 let searchResults;
 let searchInput;
 let clearBtn;
@@ -173,10 +173,7 @@ map.on('load', () => {
                     'visibility': document.getElementById('layer-10k').checked ? 'visible' : 'none'
                 }
             }, 'z-index-3-hazards_10k'); // Place in 10k shelf
-
-            map.on('click', 'hazard_10k_fill', showPopup);
-            map.on('mouseenter', 'hazard_10k_fill', () => map.getCanvas().style.cursor = 'pointer');
-            map.on('mouseleave', 'hazard_10k_fill', () => map.getCanvas().style.cursor = '');
+            // Click & cursor handlers are managed by the unified canvas click listener (no per-layer binding needed)
         }
     }
 
@@ -270,11 +267,7 @@ map.on('load', () => {
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-6-top'); // Top shelf
-
-        // Re-bind events
-        map.on('click', 'inspection_points', showPopup);
-        map.on('mouseenter', 'inspection_points', () => map.getCanvas().style.cursor = 'pointer');
-        map.on('mouseleave', 'inspection_points', () => map.getCanvas().style.cursor = '');
+        // Click & cursor handlers are managed by the unified canvas click listener
     };
 
     // 2. TOTAL IMPACT ZONE (TIZ) — 1:10,000
@@ -306,10 +299,7 @@ map.on('load', () => {
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-4-zones');
-
-        map.on('click', 'tiz_zones_fill', showPopup);
-        map.on('mouseenter', 'tiz_zones_fill', () => map.getCanvas().style.cursor = 'pointer');
-        map.on('mouseleave', 'tiz_zones_fill', () => map.getCanvas().style.cursor = '');
+        // Click & cursor handlers are managed by the unified canvas click listener
     };
 
     // 2b. TOTAL IMPACT ZONE (TIZ) — 1:50,000
@@ -340,10 +330,7 @@ map.on('load', () => {
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-4-zones');
-
-        map.on('click', 'tiz_50k_fill', showPopup);
-        map.on('mouseenter', 'tiz_50k_fill', () => map.getCanvas().style.cursor = 'pointer');
-        map.on('mouseleave', 'tiz_50k_fill', () => map.getCanvas().style.cursor = '');
+        // Click & cursor handlers are managed by the unified canvas click listener
     };
 
     // ARG Rain Gauges & Thiessen Polygons
@@ -464,25 +451,63 @@ map.on('load', () => {
             'layout': { 'visibility': 'visible' }
         }, 'z-index-5-overlays');
 
-        map.on('click', 'satellite_points', showPopup);
-        map.on('click', 'satellite_polygons', showPopup);
-        map.on('mouseenter', 'satellite_points', () => map.getCanvas().style.cursor = 'pointer');
-        map.on('mouseleave', 'satellite_points', () => map.getCanvas().style.cursor = '');
-        map.on('mouseenter', 'satellite_polygons', () => map.getCanvas().style.cursor = 'pointer');
-        map.on('mouseleave', 'satellite_polygons', () => map.getCanvas().style.cursor = '');
     };
 
 
-    map.on('click', 'hazard_50k_fill', showPopup);
-    map.on('click', 'arg_locations_points', showPopup);
-
-    map.on('mouseenter', 'hazard_50k_fill', () => map.getCanvas().style.cursor = 'pointer');
-    map.on('mouseleave', 'hazard_50k_fill', () => map.getCanvas().style.cursor = '');
-    map.on('mouseenter', 'arg_locations_points', () => map.getCanvas().style.cursor = 'pointer');
-    map.on('mouseleave', 'arg_locations_points', () => map.getCanvas().style.cursor = '');
+    // Pre-load inspection reports immediately on map load so incident points are ready in memory
+    if (typeof window.loadInspection === 'function') {
+        window.loadInspection();
+    }
 
     // Fetch summary.json and search_index.json
     loadDashboardAndSearchData();
+
+    // Smart unified canvas click listener that prioritizes point features (inspection points) over background polygons
+    map.on('click', (e) => {
+        // Don't open popups while measurement tool is active
+        if (isMeasuring) return;
+
+        const candidateLayers = [
+            'inspection_points',
+            'satellite_points',
+            'arg_locations_points',
+            'satellite_polygons',
+            'tiz_zones_fill',
+            'tiz_50k_fill',
+            'hazard_10k_fill',
+            'hazard_50k_fill'
+        ].filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+
+        if (candidateLayers.length === 0) return;
+
+        // 24x24 px bounding box around click point for easy target hit on desktop & touch
+        const bbox = [
+            [e.point.x - 12, e.point.y - 12],
+            [e.point.x + 12, e.point.y + 12]
+        ];
+        const features = map.queryRenderedFeatures(bbox, { layers: candidateLayers });
+
+        if (!features || features.length === 0) return;
+
+        // Prioritize inspection points > satellite points > rain gauges > polygons
+        const selectedFeature = features.find(f => f.layer && f.layer.id === 'inspection_points') ||
+                                features.find(f => f.layer && f.layer.id === 'satellite_points') ||
+                                features.find(f => f.layer && f.layer.id === 'arg_locations_points') ||
+                                features.find(f => f.layer && f.layer.id === 'satellite_polygons') ||
+                                features.find(f => f.layer && f.layer.id === 'tiz_zones_fill') ||
+                                features.find(f => f.layer && f.layer.id === 'tiz_50k_fill') ||
+                                features.find(f => f.layer && f.layer.id === 'hazard_10k_fill') ||
+                                features.find(f => f.layer && f.layer.id === 'hazard_50k_fill') ||
+                                features[0];
+
+        showPopupForFeature(selectedFeature, e.lngLat);
+    });
+
+    // Cursor hover feedback across interactive layers
+    ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons', 'hazard_10k_fill', 'hazard_50k_fill', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
+        map.on('mouseenter', layerId, () => { if (map.getLayer(layerId)) map.getCanvas().style.cursor = 'pointer'; });
+        map.on('mouseleave', layerId, () => { if (map.getLayer(layerId)) map.getCanvas().style.cursor = ''; });
+    });
 
     // Map loaded - hide loading indicator with smooth transition
     updateProgress(100, 'Map ready!');
@@ -495,7 +520,7 @@ map.on('load', () => {
     map.on('error', (e) => {
         const msg = (e.error && e.error.message) ? e.error.message : '';
         if (msg.includes('inspection_reports')) {
-            showToast('\u26a0\ufe0f Inspection Reports failed to load. Check R2 bucket.', 'error');
+            showToast('⚠️ Inspection Reports failed to load. Check R2 bucket.', 'error');
         } else if (msg.includes('404')) {
             console.warn('Map source error (404):', msg);
         }
@@ -512,10 +537,10 @@ setTimeout(() => {
     }
 }, 10000);
 
-function showPopup(e) {
-    const coordinates = e.lngLat;
-    const props = e.features[0].properties;
-    const layerId = e.features[0].layer ? e.features[0].layer.id : '';
+function showPopupForFeature(feature, coordinates) {
+    if (!feature || !coordinates) return;
+    const props = feature.properties || {};
+    const layerId = feature.layer ? feature.layer.id : '';
 
     let content = '';
 
@@ -588,9 +613,10 @@ function showPopup(e) {
             </div>
         `;
     } else if (layerId === 'tiz_zones_fill' || layerId === 'tiz_50k_fill') {
-        const riskLevel = props.DN === 10 ? 'Red Zone' : (props.DN === 20 ? 'Yellow Zone' : 'Unknown');
-        const badgeColor = props.DN === 10 ? '#ef4444' : '#facc15';
-        const badgeBg = props.DN === 10 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(250, 204, 21, 0.15)';
+        const dn = parseInt(props.DN);
+        const riskLevel = dn === 10 ? 'Red Zone' : (dn === 20 ? 'Yellow Zone' : 'Unknown');
+        const badgeColor = dn === 10 ? '#ef4444' : '#facc15';
+        const badgeBg = dn === 10 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(250, 204, 21, 0.15)';
         content = `
             <div style="padding: 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 200px;">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
@@ -615,6 +641,11 @@ function showPopup(e) {
         .setLngLat(coordinates)
         .setHTML(content)
         .addTo(map);
+}
+
+function showPopup(e) {
+    if (!e || !e.features || !e.features.length) return;
+    showPopupForFeature(e.features[0], e.lngLat);
 }
 
 function safeAddEventListener(id, event, callback) {
@@ -958,8 +989,22 @@ document.getElementById('locate-btn').addEventListener('click', () => {
         <b>Accuracy:</b> ±${Math.round(accuracy)}m
     </div>`
                         ))
-                        .addTo(map)
-                        .togglePopup();
+                        .addTo(map);
+
+                    // Ensure GPS marker doesn't block underlying incident point clicks
+                    const gpsEl = window.gpsMarker.getElement();
+                    if (gpsEl) {
+                        gpsEl.style.cursor = 'pointer';
+                        gpsEl.addEventListener('click', (ev) => {
+                            const pt = map.project([lng, lat]);
+                            const bbox = [[pt.x - 16, pt.y - 16], [pt.x + 16, pt.y + 16]];
+                            const hits = map.queryRenderedFeatures(bbox, { layers: ['inspection_points', 'satellite_points'] });
+                            if (hits && hits.length > 0) {
+                                ev.stopPropagation();
+                                showPopupForFeature(hits[0], [lng, lat]);
+                            }
+                        });
+                    }
 
                     // Fly to location on first fix
                     map.flyTo({ center: [lng, lat], zoom: 16 });
@@ -1057,6 +1102,7 @@ clearBtn.addEventListener('click', () => {
     searchResults.style.display = 'none';
     if (searchMarker) {
         searchMarker.remove();
+        searchMarker = null;
     }
 });
 
@@ -1243,11 +1289,41 @@ function displayResults(results) {
                                <div class="popup-info">${subtitle.textContent}</div>`
                     )
                 )
-                .addTo(map)
-                .togglePopup();
+                .addTo(map);
+
+            // Allow clicks on search marker element to trigger underlying incident point popup
+            const searchEl = searchMarker.getElement();
+            if (searchEl) {
+                searchEl.style.cursor = 'pointer';
+                searchEl.addEventListener('click', (ev) => {
+                    const pt = map.project([lon, lat]);
+                    const bbox = [[pt.x - 16, pt.y - 16], [pt.x + 16, pt.y + 16]];
+                    const hits = map.queryRenderedFeatures(bbox, { layers: ['inspection_points', 'satellite_points'] });
+                    if (hits && hits.length > 0) {
+                        ev.stopPropagation();
+                        showPopupForFeature(hits[0], [lon, lat]);
+                    }
+                });
+            }
 
             searchResults.style.display = 'none';
             searchInput.value = result.isLocal ? result.display_name.split(' - ')[0] : result.display_name.split(',')[0];
+
+            // For local site search, automatically open the rich incident report popup once map finishes flying
+            if (result.isLocal) {
+                setTimeout(() => {
+                    const pt = map.project([lon, lat]);
+                    const bbox = [[pt.x - 16, pt.y - 16], [pt.x + 16, pt.y + 16]];
+                    const hits = map.queryRenderedFeatures(bbox, { layers: ['inspection_points', 'satellite_points'] });
+                    if (hits && hits.length > 0) {
+                        showPopupForFeature(hits[0], [lon, lat]);
+                    } else if (searchMarker) {
+                        searchMarker.togglePopup();
+                    }
+                }, 1200);
+            } else {
+                if (searchMarker) searchMarker.togglePopup();
+            }
         });
 
         searchResults.appendChild(item);
@@ -1292,15 +1368,17 @@ window.addEventListener('load', () => {
         legend.classList.add('collapsed');
     }
 
-    const isControlsCollapsed = localStorage.getItem('controlsCollapsed') === 'true';
-    if (isControlsCollapsed || (isMobile && localStorage.getItem('controlsCollapsed') === null)) {
-        controlsPanel.classList.add('collapsed');
+    if (controlsPanel) {
+        const isControlsCollapsed = localStorage.getItem('controlsCollapsed') === 'true';
+        if (isControlsCollapsed || (isMobile && localStorage.getItem('controlsCollapsed') === null)) {
+            controlsPanel.classList.add('collapsed');
+        }
     }
 });
 
 // Controls toggle functionality
 const controlsToggle = document.getElementById('controls-toggle');
-controlsPanel = document.querySelector('.controls-panel');
+if (!controlsPanel) controlsPanel = document.querySelector('.controls-panel');
 
 controlsToggle.addEventListener('click', () => {
     controlsPanel.classList.toggle('collapsed');
@@ -1909,16 +1987,29 @@ async function loadSearchIndex() {
     if (localSearchIndex.length > 0 || _searchIndexLoading) return;
     _searchIndexLoading = true;
     try {
-        const cached = sessionStorage.getItem('search_index_v1');
-        if (cached) {
-            localSearchIndex = JSON.parse(cached);
-        } else {
+        // PERF-3: Try IndexedDB first (handles larger datasets than sessionStorage's 5MB limit)
+        let loaded = false;
+        if (window.indexedDB) {
+            try {
+                const cached = await idbGet('search_index_v1');
+                if (cached) {
+                    localSearchIndex = cached;
+                    loaded = true;
+                }
+            } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
+        }
+        if (!loaded) {
             const res = await fetch(`${DATA_BASE_URL}/search_index.json`);
             if (res.ok) {
                 localSearchIndex = await res.json();
-                try { sessionStorage.setItem('search_index_v1', JSON.stringify(localSearchIndex)); } catch(e) {}
+                // Cache in IndexedDB for next session (non-blocking)
+                if (window.indexedDB) {
+                    idbSet('search_index_v1', localSearchIndex).catch(() => {});
+                }
             }
         }
+        // PERF-1: Build grid spatial index for fast viewport queries
+        buildSpatialGrid();
         updateViewportStats();
         populateQueryDropdowns();
     } catch (e) {
@@ -1926,6 +2017,70 @@ async function loadSearchIndex() {
     } finally {
         _searchIndexLoading = false; // Allow retry on next keystroke after network failure
     }
+}
+
+// --- PERF-3: Simple IndexedDB helpers (key-value store) ---
+function idbOpen() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open('lhzm_cache', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('kv');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+function idbGet(key) {
+    return idbOpen().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction('kv', 'readonly');
+        const req = tx.objectStore('kv').get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    }));
+}
+function idbSet(key, val) {
+    return idbOpen().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put(val, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    }));
+}
+
+// --- PERF-1: Grid-based spatial index for fast viewport queries ---
+const GRID_SIZE = 0.1; // ~11km grid cells
+let spatialGrid = {};
+
+function buildSpatialGrid() {
+    spatialGrid = {};
+    for (let i = 0; i < localSearchIndex.length; i++) {
+        const item = localSearchIndex[i];
+        const gx = Math.floor(item.lon / GRID_SIZE);
+        const gy = Math.floor(item.lat / GRID_SIZE);
+        const key = gx + ',' + gy;
+        if (!spatialGrid[key]) spatialGrid[key] = [];
+        spatialGrid[key].push(i);
+    }
+}
+
+function queryGrid(west, east, south, north) {
+    const gxMin = Math.floor(west / GRID_SIZE);
+    const gxMax = Math.floor(east / GRID_SIZE);
+    const gyMin = Math.floor(south / GRID_SIZE);
+    const gyMax = Math.floor(north / GRID_SIZE);
+    const results = [];
+    for (let gx = gxMin; gx <= gxMax; gx++) {
+        for (let gy = gyMin; gy <= gyMax; gy++) {
+            const cell = spatialGrid[gx + ',' + gy];
+            if (cell) {
+                for (let k = 0; k < cell.length; k++) {
+                    const item = localSearchIndex[cell[k]];
+                    if (item.lon >= west && item.lon <= east && item.lat >= south && item.lat <= north) {
+                        results.push(item);
+                    }
+                }
+            }
+        }
+    }
+    return results;
 }
 
 async function loadDashboardAndSearchData() {
@@ -2079,11 +2234,12 @@ function updateViewportStats() {
     // District grouping: { districtName: { total, hr, mr, lr } }
     const districtMap = {};
 
-    for (let i = 0; i < localSearchIndex.length; i++) {
-        const item = localSearchIndex[i];
-        const lng  = item.lon;
-        const lat  = item.lat;
-        if (lng >= west && lng <= east && lat >= south && lat <= north) {
+    // PERF-1: Use grid spatial index for fast viewport query instead of scanning all 7,000+ points
+    const viewportItems = Object.keys(spatialGrid).length > 0 ? queryGrid(west, east, south, north) : localSearchIndex.filter(item => item.lon >= west && item.lon <= east && item.lat >= south && item.lat <= north);
+
+    for (let i = 0; i < viewportItems.length; i++) {
+        const item = viewportItems[i];
+        {
             // Apply advanced filters so dashboard matches the filtered map dots
             // Use case-insensitive comparison because dropdown values are Title Case via cleanName()
             if (currentFilters.dis && (item.dis || '').toLowerCase() !== currentFilters.dis.toLowerCase()) continue;
@@ -2150,16 +2306,23 @@ function updateViewportStats() {
                 if (b[1].hr !== a[1].hr) return b[1].hr - a[1].hr;
                 return b[1].total - a[1].total;
             });
-            tbody.innerHTML = districts.map(([name, d]) => {
-                return `<tr style="cursor:pointer;" onclick="flyToDistrict('${name.replace(/'/g, "\\'")}')"
-                    title="Click to fly to ${name} District">
-                    <td style="font-size:0.72rem;color:#e2e8f0;font-weight:500;">${name}</td>
+            tbody.innerHTML = '';
+            districts.forEach(([name, d]) => {
+                const tr = document.createElement('tr');
+                tr.style.cursor = 'pointer';
+                tr.title = `Click to fly to ${name} District`;
+                tr.addEventListener('click', () => flyToDistrict(name));
+                tr.innerHTML = `
+                    <td style="font-size:0.72rem;color:#e2e8f0;font-weight:500;"></td>
                     <td style="font-size:0.72rem;color:#a78bfa;font-weight:600;">${d.total}</td>
                     <td style="font-size:0.72rem;color:#f87171;">${d.hr || '—'}</td>
                     <td style="font-size:0.72rem;color:#fbbf24;">${d.mr || '—'}</td>
                     <td style="font-size:0.72rem;color:#4ade80;">${d.lr || '—'}</td>
-                </tr>`;
-            }).join('');
+                `;
+                // Set district name as textContent (XSS-safe)
+                tr.querySelector('td').textContent = name;
+                tbody.appendChild(tr);
+            });
         }
     }
 
