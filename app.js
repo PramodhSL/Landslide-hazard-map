@@ -457,6 +457,13 @@ map.on('load', () => {
     // Pre-load inspection reports immediately on map load so incident points are ready in memory
     if (typeof window.loadInspection === 'function') {
         window.loadInspection();
+        const inspBox = document.getElementById('layer-inspection');
+        if (inspBox && inspBox.checked) {
+            const advPanel = document.getElementById('advanced-query-panel');
+            const dashPanel = document.getElementById('dashboard-panel');
+            if (advPanel) advPanel.style.display = 'flex';
+            if (dashPanel) dashPanel.style.display = 'block';
+        }
     }
 
     // Fetch summary.json and search_index.json
@@ -655,8 +662,11 @@ function safeAddEventListener(id, event, callback) {
 
 safeAddEventListener('layer-10k', 'change', (e) => {
     // Load 1:10k on demand if user toggles it
-    if (e.target.checked && !window.hazard10kLoaded) {
-        window.loadHazard10k();
+    if (e.target.checked) {
+        if (!window.hazard10kLoaded) window.loadHazard10k();
+        if (map.getZoom() < 12) {
+            showToast('ℹ️ <b>Zoom 12+ Required for 1:10,000 Detail</b><br><br>Please zoom in closer on the map to view the 1:10,000 hazard map layer.', 'info');
+        }
     }
     if (window.hazard10kLoaded) {
         map.setLayoutProperty('hazard_10k_fill', 'visibility', e.target.checked ? 'visible' : 'none');
@@ -744,7 +754,11 @@ const tizToggleBtn = document.getElementById('layer-tiz');
 if (tizToggleBtn) {
     tizToggleBtn.addEventListener('change', (e) => {
         if (e.target.checked) {
-            showToast('⚠️ <b>INTERNAL USE ONLY</b><br><br>The Total Impact Zone (TIZ) layer is a preliminary, model-derived product and has not been field verified. This dataset is restricted to internal institutional use only and is provided solely as a decision-support tool. It should not be used independently or considered as a final or authoritative assessment.', 'warning');
+            let msg = '⚠️ <b>INTERNAL USE ONLY</b><br><br>The Total Impact Zone (TIZ) layer is a preliminary, model-derived product and has not been field verified. This dataset is restricted to internal institutional use only and is provided solely as a decision-support tool. It should not be used independently or considered as a final or authoritative assessment.';
+            if (map.getZoom() < 12) {
+                msg += '<br><br>🔍 <i>Note: TIZ 1:10,000 appears when zoomed in closer (Zoom level 12+).</i>';
+            }
+            showToast(msg, 'warning');
             if (!window.tizZonesLoaded) window.loadTizzones();
         }
         if (map.getLayer('tiz_zones_fill')) {
