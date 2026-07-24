@@ -544,6 +544,22 @@ setTimeout(() => {
     }
 }, 10000);
 
+function getPropVal(props, targetKeys) {
+    if (!props) return '';
+    for (const key in props) {
+        const cleanKey = key.trim().toLowerCase();
+        for (const tk of targetKeys) {
+            if (cleanKey === tk.trim().toLowerCase()) {
+                const val = props[key];
+                if (val !== null && val !== undefined && String(val).trim() !== '' && String(val).trim() !== 'N/A') {
+                    return String(val).trim();
+                }
+            }
+        }
+    }
+    return '';
+}
+
 function showPopupForFeature(feature, coordinates) {
     if (!feature || !coordinates) return;
     const props = feature.properties || {};
@@ -552,9 +568,9 @@ function showPopupForFeature(feature, coordinates) {
     let content = '';
 
     if (layerId === 'inspection_points') {
-        const rawRef = props['Ref. Code'] || props['Ref. No.'] || props['Reference Number'] || props['Ref No'] || props['Name'] || 'N/A';
+        const rawRef = getPropVal(props, ['Ref. Code', 'Ref. No.', 'Reference Number', 'Ref No', 'Name']) || 'N/A';
         const refNo = String(rawRef).replace(/NBRO/g, 'NBRI');
-        const risk = props['HR (Priority level)'] || props['Risk level'] || 'N/A';
+        const risk = getPropVal(props, ['HR (Priority level)', 'Risk level', 'Risk']) || 'N/A';
 
         // Badge styling based on risk
         let badgeColor = '#3b82f6'; // default blue
@@ -586,7 +602,9 @@ function showPopupForFeature(feature, coordinates) {
                 const valStr = props[key].toString().trim();
                 if (valStr === '' || valStr === 'N/A') continue;
 
-                const lowerKey = key.toLowerCase().trim();
+                const cleanKey = key.trim();
+                const lowerKey = cleanKey.toLowerCase();
+                
                 // Skip GPS and metadata keys, including single letters E/N/X/Y
                 if (gpsKeys.includes(lowerKey) || 
                     lowerKey.includes('gps') || 
@@ -601,7 +619,7 @@ function showPopupForFeature(feature, coordinates) {
 
                 detailsHtml += `
                     <div style="margin-bottom: 8px; display: flex; flex-direction: column; gap: 2px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
-                        <span style="color: #94a3b8; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">${key}</span>
+                        <span style="color: #94a3b8; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">${cleanKey}</span>
                         <span style="color: #fff; font-size: 0.8rem; line-height: 1.4; word-break: break-word;">${valStr}</span>
                     </div>
                 `;
@@ -2401,19 +2419,34 @@ map.on('moveend', () => {
 
 function cleanName(str) {
     if (!str) return '';
-    // Remove Zero-Width Joiners (ZWJ/ZWNJ) and trim extra spaces
-    str = str.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
-    return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    // 1. Remove Zero-Width Joiners (ZWJ/ZWNJ) & invisible unicode
+    str = str.replace(/[\u200B-\u200D\uFEFF]/g, '');
+    // 2. Convert hyphens/dashes to spaces between words
+    str = str.replace(/(?<=\D)[\-\–\—\:](?=\D)/g, ' ');
+    // 3. Replace multiple spaces with a single space
+    str = str.replace(/\s+/g, ' ').trim();
+    // 4. Remove leading/trailing punctuation
+    str = str.replace(/^[\s\.\-\,\:\;\(\)]+|[\s\.\-\,\:\;\(\)]+$/g, '').trim();
+    
+    if (['nan', 'none', 'n/a', 'unknown', 'null', '0', '-'].includes(str.toLowerCase())) {
+        return '';
+    }
+    
+    return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
 // Data structures to hold hierarchy
 let districtToDSDs = {};
-let dsdToGNDs = {};
+let districtDsdToGNDs = {};
 let allDistricts = new Set();
 
 function initQueryDropdowns() {
     if (!localSearchIndex || localSearchIndex.length === 0) return;
     
+    districtToDSDs = {};
+    districtDsdToGNDs = {};
+    allDistricts = new Set();
+
     // Build hierarchy
     localSearchIndex.forEach(item => {
         let dist = item.dis && item.dis !== 'nan' && item.dis !== 'Unknown' ? cleanName(item.dis) : '';
@@ -2425,15 +2458,16 @@ function initQueryDropdowns() {
             if (!districtToDSDs[dist]) districtToDSDs[dist] = new Set();
             if (dsd) {
                 districtToDSDs[dist].add(dsd);
-                if (!dsdToGNDs[dsd]) dsdToGNDs[dsd] = new Set();
-                if (gnd) dsdToGNDs[dsd].add(gnd);
+                const key = dist + '|' + dsd;
+                if (!districtDsdToGNDs[key]) districtDsdToGNDs[key] = new Set();
+                if (gnd) districtDsdToGNDs[key].add(gnd);
             }
         }
     });
 
     // Populate Districts
     const distSelect = document.getElementById('query-district');
-    if (distSelect && distSelect.options.length <= 1) {
+    if (distSelect) {
         buildOptions(allDistricts, distSelect);
     }
     
@@ -2496,9 +2530,9 @@ function updateDropdownStates() {
             gndSelect.innerHTML = gndSelect.options[0].outerHTML;
         } else {
             gndSelect.disabled = false;
-            if (gndSelect.options.length <= 1 || !Array.from(dsdToGNDs[selectedDSD] || []).includes(gndSelect.options[1]?.value)) {
-                buildOptions(dsdToGNDs[selectedDSD] || new Set(), gndSelect);
-            }
+            const key = selectedDist + '|' + selectedDSD;
+            const validGNDs = districtDsdToGNDs[key] || new Set();
+            buildOptions(validGNDs, gndSelect);
         }
     }
     
