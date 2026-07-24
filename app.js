@@ -454,18 +454,6 @@ map.on('load', () => {
     };
 
 
-    // Pre-load inspection reports immediately on map load so incident points are ready in memory
-    if (typeof window.loadInspection === 'function') {
-        window.loadInspection();
-        const inspBox = document.getElementById('layer-inspection');
-        if (inspBox && inspBox.checked) {
-            const advPanel = document.getElementById('advanced-query-panel');
-            const dashPanel = document.getElementById('dashboard-panel');
-            if (advPanel) advPanel.style.display = 'flex';
-            if (dashPanel) dashPanel.style.display = 'block';
-        }
-    }
-
     // Fetch summary.json and search_index.json
     loadDashboardAndSearchData();
 
