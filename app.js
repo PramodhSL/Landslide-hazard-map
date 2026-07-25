@@ -2604,48 +2604,43 @@ function applyAdvancedFilters() {
         const cleanD = currentFilters.d.trim();
         filterArray.push(['any', 
             ['==', ['get', 'DSD'], cleanD],
-            ['==', ['get', 'DS Division'], cleanD],
             ['in', cleanD, ['coalesce', ['get', 'DSD'], '']],
-            ['in', cleanD, ['coalesce', ['get', 'DS Division'], '']],
-            ['==', ['upcase', ['coalesce', ['get', 'DSD'], '']], cleanD.toUpperCase()],
-            ['==', ['upcase', ['coalesce', ['get', 'DS Division'], '']], cleanD.toUpperCase()]
+            ['==', ['upcase', ['coalesce', ['get', 'DSD'], '']], cleanD.toUpperCase()]
         ]);
     }
     
     if (currentFilters.cat) {
         if (currentFilters.cat === 'Landslide') {
             filterArray.push(['any',
-                ['in', 'Landslide', ['coalesce', ['get', 'DisasterCategory'], '']],
                 ['in', 'landslide', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
                 ['in', 'නාය', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]]
             ]);
         } else if (currentFilters.cat === 'Cutting Failure') {
             filterArray.push(['any',
-                ['in', 'Cutting Failure', ['coalesce', ['get', 'DisasterCategory'], '']],
                 ['in', 'cutting', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
                 ['in', 'කණ්ඩි', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]]
             ]);
         } else if (currentFilters.cat === 'Slope Failure') {
             filterArray.push(['any',
-                ['in', 'Slope Failure', ['coalesce', ['get', 'DisasterCategory'], '']],
                 ['in', 'slope', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
                 ['in', 'බැවුම්', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]]
             ]);
         } else if (currentFilters.cat === 'Rock Fall') {
             filterArray.push(['any',
-                ['in', 'Rock Fall', ['coalesce', ['get', 'DisasterCategory'], '']],
                 ['in', 'rock', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
                 ['in', 'ගල්', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]]
             ]);
         } else if (currentFilters.cat === 'Subsidence') {
             filterArray.push(['any',
-                ['in', 'Subsidence', ['coalesce', ['get', 'DisasterCategory'], '']],
                 ['in', 'sink', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
                 ['in', 'subsid', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
                 ['in', 'ගිලා', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]]
             ]);
         } else if (currentFilters.cat === 'Other') {
-            filterArray.push(['in', 'Other', ['coalesce', ['get', 'DisasterCategory'], '']]);
+            filterArray.push(['any',
+                ['in', 'other', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
+                ['in', 'වෙනත්', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]]
+            ]);
         }
     }
     
