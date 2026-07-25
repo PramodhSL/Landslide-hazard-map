@@ -2395,6 +2395,7 @@ function cleanName(str) {
 
 // Data structures to hold hierarchy
 let districtToDSDs = {};
+let districtToGNDs = {};
 let districtDsdToGNDs = {};
 let allDistricts = new Set();
 
@@ -2402,6 +2403,7 @@ function initQueryDropdowns() {
     if (!localSearchIndex || localSearchIndex.length === 0) return;
     
     districtToDSDs = {};
+    districtToGNDs = {};
     districtDsdToGNDs = {};
     allDistricts = new Set();
 
@@ -2414,6 +2416,9 @@ function initQueryDropdowns() {
         if (dist) {
             allDistricts.add(dist);
             if (!districtToDSDs[dist]) districtToDSDs[dist] = new Set();
+            if (!districtToGNDs[dist]) districtToGNDs[dist] = new Set();
+            if (gnd) districtToGNDs[dist].add(gnd);
+            
             if (dsd) {
                 districtToDSDs[dist].add(dsd);
                 const key = dist + '|' + dsd;
@@ -2476,22 +2481,23 @@ function updateDropdownStates() {
         gndSelect.innerHTML = gndSelect.options[0].outerHTML;
     } else {
         dsdSelect.disabled = false;
-        // Rebuild DSD based on District (if it was just selected)
-        if (dsdSelect.options.length <= 1 || !Array.from(districtToDSDs[selectedDist] || []).includes(dsdSelect.options[1]?.value)) {
-            buildOptions(districtToDSDs[selectedDist] || new Set(), dsdSelect);
+        gndSelect.disabled = false;
+
+        // Rebuild DSD based on District
+        const validDSDs = districtToDSDs[selectedDist] || new Set();
+        if (dsdSelect.options.length <= 1 || !Array.from(validDSDs).includes(dsdSelect.options[1]?.value)) {
+            buildOptions(validDSDs, dsdSelect);
         }
         
-        // If no DSD selected, disable GND
-        if (!selectedDSD) {
-            gndSelect.value = '';
-            gndSelect.disabled = true;
-            gndSelect.innerHTML = gndSelect.options[0].outerHTML;
-        } else {
-            gndSelect.disabled = false;
+        // Populate GND: if DSD is selected, filter GND by District+DSD; otherwise show all GNDs in District
+        let validGNDs;
+        if (selectedDSD) {
             const key = selectedDist + '|' + selectedDSD;
-            const validGNDs = districtDsdToGNDs[key] || new Set();
-            buildOptions(validGNDs, gndSelect);
+            validGNDs = districtDsdToGNDs[key] || new Set();
+        } else {
+            validGNDs = districtToGNDs[selectedDist] || new Set();
         }
+        buildOptions(validGNDs, gndSelect);
     }
     
     // Update visual style for disabled selects
@@ -2572,22 +2578,20 @@ function applyAdvancedFilters() {
             ['==', ['get', 'DSD'], cleanD],
             ['==', ['get', 'DS Division'], cleanD],
             ['==', ['upcase', ['coalesce', ['get', 'DSD'], '']], cleanD.toUpperCase()],
-            ['==', ['upcase', ['coalesce', ['get', 'DS Division'], '']], cleanD.toUpperCase()],
-            ['in', cleanD.toLowerCase(), ['downcase', ['coalesce', ['get', 'DSD'], '']]],
-            ['in', cleanD.toLowerCase(), ['downcase', ['coalesce', ['get', 'DS Division'], '']]]
+            ['==', ['upcase', ['coalesce', ['get', 'DS Division'], '']], cleanD.toUpperCase()]
         ]);
     }
     
     if (currentFilters.g) {
         const cleanG = currentFilters.g.trim();
         filterArray.push(['any', 
-            ['==', ['get', 'GND'], cleanG],
             ['==', ['get', 'Name of GND'], cleanG],
+            ['==', ['get', 'GND'], cleanG],
+            ['==', ['get', 'Number of GND'], cleanG],
             ['==', ['get', 'GND_Name'], cleanG],
-            ['==', ['upcase', ['coalesce', ['get', 'GND'], '']], cleanG.toUpperCase()],
             ['==', ['upcase', ['coalesce', ['get', 'Name of GND'], '']], cleanG.toUpperCase()],
-            ['in', cleanG.toLowerCase(), ['downcase', ['coalesce', ['get', 'GND'], '']]],
-            ['in', cleanG.toLowerCase(), ['downcase', ['coalesce', ['get', 'Name of GND'], '']]]
+            ['==', ['upcase', ['coalesce', ['get', 'GND'], '']], cleanG.toUpperCase()],
+            ['==', ['upcase', ['coalesce', ['get', 'Number of GND'], '']], cleanG.toUpperCase()]
         ]);
     }
     
