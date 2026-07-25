@@ -10,7 +10,7 @@ const DATA_BASE_URL = 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev';
 // Local search and summary statistics variables
 let localSearchIndex = [];
 let summaryStats = null;
-let currentFilters = { dis: '', r: '', d: '', g: '' };
+let currentFilters = { dis: '', r: '', d: '', cat: '' };
 
 
 let protocol = new pmtiles.Protocol();
@@ -2232,9 +2232,9 @@ function updateViewportStats() {
         {
             // Apply advanced filters so dashboard matches the filtered map dots
             // Use case-insensitive comparison because dropdown values are Title Case via cleanName()
-            if (currentFilters.dis && cleanName(item.dis).toLowerCase() !== cleanName(currentFilters.dis).toLowerCase()) continue;
-            if (currentFilters.d && cleanName(item.d).toLowerCase() !== cleanName(currentFilters.d).toLowerCase()) continue;
-            if (currentFilters.g && cleanName(item.g).toLowerCase() !== cleanName(currentFilters.g).toLowerCase()) continue;
+            if (currentFilters.dis && item.dis.trim().toLowerCase() !== currentFilters.dis.trim().toLowerCase()) continue;
+            if (currentFilters.d && item.d.trim().toLowerCase() !== currentFilters.d.trim().toLowerCase()) continue;
+            if (currentFilters.cat && !(item.cat || '').includes(currentFilters.cat)) continue;
             
             const cls = classifyRisk(item.r);
             
@@ -2403,27 +2403,18 @@ function initQueryDropdowns() {
     if (!localSearchIndex || localSearchIndex.length === 0) return;
     
     districtToDSDs = {};
-    districtToGNDs = {};
-    districtDsdToGNDs = {};
     allDistricts = new Set();
 
     // Build hierarchy
     localSearchIndex.forEach(item => {
         let dist = item.dis && item.dis !== 'nan' && item.dis !== 'Unknown' ? cleanName(item.dis) : '';
         let dsd = item.d && item.d !== 'nan' && item.d.trim() !== '' ? cleanName(item.d) : '';
-        let gnd = item.g && item.g !== 'nan' && item.g.trim() !== '' ? cleanName(item.g) : '';
         
         if (dist) {
             allDistricts.add(dist);
             if (!districtToDSDs[dist]) districtToDSDs[dist] = new Set();
-            if (!districtToGNDs[dist]) districtToGNDs[dist] = new Set();
-            if (gnd) districtToGNDs[dist].add(gnd);
-            
             if (dsd) {
                 districtToDSDs[dist].add(dsd);
-                const key = dist + '|' + dsd;
-                if (!districtDsdToGNDs[key]) districtDsdToGNDs[key] = new Set();
-                if (gnd) districtDsdToGNDs[key].add(gnd);
             }
         }
     });
@@ -2435,7 +2426,7 @@ function initQueryDropdowns() {
     }
     
     // Attach listeners
-    ['query-district', 'query-risk', 'query-dsd', 'query-gnd'].forEach(id => {
+    ['query-district', 'query-risk', 'query-dsd', 'query-nature'].forEach(id => {
         const el = document.getElementById(id);
         if (el && !el.dataset.listenerAttached) {
             el.dataset.listenerAttached = "1";
@@ -2465,53 +2456,33 @@ function buildOptions(set, selectEl) {
 function updateDropdownStates() {
     const distSelect = document.getElementById('query-district');
     const dsdSelect = document.getElementById('query-dsd');
-    const gndSelect = document.getElementById('query-gnd');
-    if (!distSelect || !dsdSelect || !gndSelect) return;
+    if (!distSelect || !dsdSelect) return;
     
     const selectedDist = distSelect.value;
-    const selectedDSD = dsdSelect.value;
     
-    // If no district selected, disable DSD and GND
+    // If no district selected, disable DSD
     if (!selectedDist) {
         dsdSelect.value = '';
-        gndSelect.value = '';
         dsdSelect.disabled = true;
-        gndSelect.disabled = true;
         dsdSelect.innerHTML = dsdSelect.options[0].outerHTML;
-        gndSelect.innerHTML = gndSelect.options[0].outerHTML;
     } else {
         dsdSelect.disabled = false;
-        gndSelect.disabled = false;
-
         // Rebuild DSD based on District
         const validDSDs = districtToDSDs[selectedDist] || new Set();
         if (dsdSelect.options.length <= 1 || !Array.from(validDSDs).includes(dsdSelect.options[1]?.value)) {
             buildOptions(validDSDs, dsdSelect);
         }
-        
-        // Populate GND: if DSD is selected, filter GND by District+DSD; otherwise show all GNDs in District
-        let validGNDs;
-        if (selectedDSD) {
-            const key = selectedDist + '|' + selectedDSD;
-            validGNDs = districtDsdToGNDs[key] || new Set();
-        } else {
-            validGNDs = districtToGNDs[selectedDist] || new Set();
-        }
-        buildOptions(validGNDs, gndSelect);
     }
     
-    // Update visual style for disabled selects
-    [dsdSelect, gndSelect].forEach(el => {
-        el.style.opacity = el.disabled ? '0.5' : '1';
-        el.style.cursor = el.disabled ? 'not-allowed' : 'pointer';
-    });
+    dsdSelect.style.opacity = dsdSelect.disabled ? '0.5' : '1';
+    dsdSelect.style.cursor = dsdSelect.disabled ? 'not-allowed' : 'pointer';
 }
 
 function resetAllFilters() {
-    document.getElementById('query-district').value = '';
-    document.getElementById('query-risk').value = '';
-    document.getElementById('query-dsd').value = '';
-    document.getElementById('query-gnd').value = '';
+    if (document.getElementById('query-district')) document.getElementById('query-district').value = '';
+    if (document.getElementById('query-risk')) document.getElementById('query-risk').value = '';
+    if (document.getElementById('query-dsd')) document.getElementById('query-dsd').value = '';
+    if (document.getElementById('query-nature')) document.getElementById('query-nature').value = '';
     
     updateDropdownStates();
     applyAdvancedFilters();
@@ -2520,10 +2491,7 @@ function resetAllFilters() {
 function handleFilterChange(e) {
     const targetId = e.target.id;
     if (targetId === 'query-district') {
-        document.getElementById('query-dsd').value = '';
-        document.getElementById('query-gnd').value = '';
-    } else if (targetId === 'query-dsd') {
-        document.getElementById('query-gnd').value = '';
+        if (document.getElementById('query-dsd')) document.getElementById('query-dsd').value = '';
     }
     
     updateDropdownStates();
@@ -2535,16 +2503,20 @@ function populateQueryDropdowns() {
 }
 
 function applyAdvancedFilters() {
-    currentFilters.dis = document.getElementById('query-district').value;
-    currentFilters.r = document.getElementById('query-risk').value;
-    currentFilters.d = document.getElementById('query-dsd').value;
-    currentFilters.g = document.getElementById('query-gnd').value;
+    const distEl = document.getElementById('query-district');
+    const riskEl = document.getElementById('query-risk');
+    const dsdEl  = document.getElementById('query-dsd');
+    const natEl  = document.getElementById('query-nature');
+
+    currentFilters.dis = distEl ? distEl.value : '';
+    currentFilters.r   = riskEl ? riskEl.value : '';
+    currentFilters.d   = dsdEl  ? dsdEl.value : '';
+    currentFilters.cat = natEl  ? natEl.value : '';
     
-    // Mapbox GL filter syntax (case insensitive match workaround)
+    // Mapbox GL filter syntax
     const filterArray = ['all'];
     
     if (currentFilters.dis) {
-        // District field in MapLibre might be capitalized differently, check both raw and Title Case
         filterArray.push(['any', 
             ['==', ['get', 'District'], currentFilters.dis],
             ['==', ['upcase', ['coalesce', ['get', 'District'], '']], currentFilters.dis.toUpperCase()]
@@ -2582,17 +2554,41 @@ function applyAdvancedFilters() {
         ]);
     }
     
-    if (currentFilters.g) {
-        const cleanG = currentFilters.g.trim();
-        filterArray.push(['any', 
-            ['==', ['get', 'Name of GND'], cleanG],
-            ['==', ['get', 'GND'], cleanG],
-            ['==', ['get', 'Number of GND'], cleanG],
-            ['==', ['get', 'GND_Name'], cleanG],
-            ['==', ['upcase', ['coalesce', ['get', 'Name of GND'], '']], cleanG.toUpperCase()],
-            ['==', ['upcase', ['coalesce', ['get', 'GND'], '']], cleanG.toUpperCase()],
-            ['==', ['upcase', ['coalesce', ['get', 'Number of GND'], '']], cleanG.toUpperCase()]
-        ]);
+    if (currentFilters.cat) {
+        if (currentFilters.cat === 'Landslide') {
+            filterArray.push(['any',
+                ['in', 'Landslide', ['coalesce', ['get', 'DisasterCategory'], '']],
+                ['in', 'landslide', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
+                ['in', 'නාය', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]]
+            ]);
+        } else if (currentFilters.cat === 'Cutting Failure') {
+            filterArray.push(['any',
+                ['in', 'Cutting Failure', ['coalesce', ['get', 'DisasterCategory'], '']],
+                ['in', 'cutting', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
+                ['in', 'කණ්ඩි', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]]
+            ]);
+        } else if (currentFilters.cat === 'Slope Failure') {
+            filterArray.push(['any',
+                ['in', 'Slope Failure', ['coalesce', ['get', 'DisasterCategory'], '']],
+                ['in', 'slope', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
+                ['in', 'බැවුම්', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]]
+            ]);
+        } else if (currentFilters.cat === 'Rock Fall') {
+            filterArray.push(['any',
+                ['in', 'Rock Fall', ['coalesce', ['get', 'DisasterCategory'], '']],
+                ['in', 'rock', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
+                ['in', 'ගල්', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]]
+            ]);
+        } else if (currentFilters.cat === 'Subsidence') {
+            filterArray.push(['any',
+                ['in', 'Subsidence', ['coalesce', ['get', 'DisasterCategory'], '']],
+                ['in', 'sink', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
+                ['in', 'subsid', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]],
+                ['in', 'ගිලා', ['downcase', ['coalesce', ['get', 'Nature of the disaster'], '']]]
+            ]);
+        } else if (currentFilters.cat === 'Other') {
+            filterArray.push(['in', 'Other', ['coalesce', ['get', 'DisasterCategory'], '']]);
+        }
     }
     
     // Apply filter to map
