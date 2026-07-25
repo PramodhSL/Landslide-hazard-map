@@ -194,7 +194,7 @@ map.on('load', () => {
 
         map.addSource('inspection_reports', {
             type: 'geojson',
-            data: `${DATA_BASE_URL}/inspection_reports.geojson`,
+            data: `${DATA_BASE_URL}/inspection_reports.geojson?v=${APP_VERSION}`,
             cluster: false
         });
 
@@ -1972,25 +1972,27 @@ let _searchIndexLoading = false;
 async function loadSearchIndex() {
     if (localSearchIndex.length > 0 || _searchIndexLoading) return;
     _searchIndexLoading = true;
+    const cacheKey = 'search_index_' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v49');
     try {
-        // PERF-3: Try IndexedDB first (handles larger datasets than sessionStorage's 5MB limit)
+        // PERF-3: Try IndexedDB first (version-bound cache)
         let loaded = false;
         if (window.indexedDB) {
             try {
-                const cached = await idbGet('search_index_v1');
-                if (cached) {
+                const cached = await idbGet(cacheKey);
+                if (cached && Array.isArray(cached) && cached.length > 0) {
                     localSearchIndex = cached;
                     loaded = true;
                 }
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const res = await fetch(`${DATA_BASE_URL}/search_index.json`);
+            const url = `${DATA_BASE_URL}/search_index.json?v=` + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v49');
+            const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
                 // Cache in IndexedDB for next session (non-blocking)
                 if (window.indexedDB) {
-                    idbSet('search_index_v1', localSearchIndex).catch(() => {});
+                    idbSet(cacheKey, localSearchIndex).catch(() => {});
                 }
             }
         }
@@ -2603,6 +2605,8 @@ function applyAdvancedFilters() {
         filterArray.push(['any', 
             ['==', ['get', 'DSD'], cleanD],
             ['==', ['get', 'DS Division'], cleanD],
+            ['in', cleanD, ['coalesce', ['get', 'DSD'], '']],
+            ['in', cleanD, ['coalesce', ['get', 'DS Division'], '']],
             ['==', ['upcase', ['coalesce', ['get', 'DSD'], '']], cleanD.toUpperCase()],
             ['==', ['upcase', ['coalesce', ['get', 'DS Division'], '']], cleanD.toUpperCase()]
         ]);
