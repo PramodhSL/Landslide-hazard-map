@@ -13,8 +13,7 @@ let summaryStats = null;
 let currentFilters = { dis: '', r: '', d: '', g: '' };
 
 
-const pmtilesCache = new pmtiles.KeyedCache();
-let protocol = new pmtiles.Protocol({ cache: pmtilesCache });
+let protocol = new pmtiles.Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
 
 // Icon Constants
@@ -499,10 +498,24 @@ map.on('load', () => {
         showPopupForFeature(selectedFeature, e.lngLat);
     });
 
-    // Cursor hover feedback across interactive layers
-    ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons', 'hazard_10k_fill', 'hazard_50k_fill', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
+    // Cursor hover feedback across interactive layers (attached safely to existing or lazy-loaded layers)
+    function attachLayerHover(layerId) {
+        if (!map.getLayer(layerId) || (map._hoverBound && map._hoverBound[layerId])) return;
+        map._hoverBound = map._hoverBound || {};
+        map._hoverBound[layerId] = true;
         map.on('mouseenter', layerId, () => { if (map.getLayer(layerId)) map.getCanvas().style.cursor = 'pointer'; });
         map.on('mouseleave', layerId, () => { if (map.getLayer(layerId)) map.getCanvas().style.cursor = ''; });
+    }
+
+    ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons', 'hazard_10k_fill', 'hazard_50k_fill', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
+        if (map.getLayer(layerId)) attachLayerHover(layerId);
+    });
+
+    // Check for newly added layers on style data changes
+    map.on('styledata', () => {
+        ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons', 'hazard_10k_fill', 'hazard_50k_fill', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
+            if (map.getLayer(layerId)) attachLayerHover(layerId);
+        });
     });
 
     // Map loaded - hide loading indicator with smooth transition
@@ -657,11 +670,6 @@ function showPopupForFeature(feature, coordinates) {
         .addTo(map);
 }
 
-function showPopup(e) {
-    if (!e || !e.features || !e.features.length) return;
-    showPopupForFeature(e.features[0], e.lngLat);
-}
-
 function safeAddEventListener(id, event, callback) {
     const el = document.getElementById(id);
     if (el) el.addEventListener(event, callback);
@@ -679,7 +687,7 @@ safeAddEventListener('layer-10k', 'change', (e) => {
         map.setLayoutProperty('hazard_10k_fill', 'visibility', e.target.checked ? 'visible' : 'none');
     }
 
-    // Dynamic zoom restriction: 1:10k supports up to zoom 18
+    // Dynamic zoom restriction: max zoom 18
     updateMaxZoom();
 });
 
@@ -692,7 +700,6 @@ safeAddEventListener('opacity-10k', 'input', (e) => {
 
 safeAddEventListener('layer-50k', 'change', (e) => {
     map.setLayoutProperty('hazard_50k_fill', 'visibility', e.target.checked ? 'visible' : 'none');
-    // Dynamic zoom restriction: 1:50k supports up to zoom 14
     updateMaxZoom();
 });
 
@@ -705,22 +712,7 @@ safeAddEventListener('opacity-50k', 'input', (e) => {
 
 // Update max zoom based on active layers
 function updateMaxZoom() {
-    const box10k = document.getElementById('layer-10k');
-    const box50k = document.getElementById('layer-50k');
-    const is10kActive = box10k ? box10k.checked : false;
-    const is50kActive = box50k ? box50k.checked : false;
-
-    if (is10kActive) {
-        map.setMaxZoom(18);
-    } else if (is50kActive) {
-        map.setMaxZoom(14);
-    } else {
-        map.setMaxZoom(18);
-    }
-
-    if (map.getZoom() > map.getMaxZoom()) {
-        map.setZoom(map.getMaxZoom());
-    }
+    map.setMaxZoom(18);
 }
 
 // Update configuration toggles to use lazy loaders
@@ -1021,12 +1013,13 @@ document.getElementById('locate-btn').addEventListener('click', () => {
                     if (gpsEl) {
                         gpsEl.style.cursor = 'pointer';
                         gpsEl.addEventListener('click', (ev) => {
-                            const pt = map.project([lng, lat]);
+                            const curPos = window.gpsMarker ? window.gpsMarker.getLngLat() : { lng, lat };
+                            const pt = map.project(curPos);
                             const bbox = [[pt.x - 16, pt.y - 16], [pt.x + 16, pt.y + 16]];
                             const hits = map.queryRenderedFeatures(bbox, { layers: ['inspection_points', 'satellite_points'] });
                             if (hits && hits.length > 0) {
                                 ev.stopPropagation();
-                                showPopupForFeature(hits[0], [lng, lat]);
+                                showPopupForFeature(hits[0], [curPos.lng, curPos.lat]);
                             }
                         });
                     }
@@ -1399,6 +1392,8 @@ window.addEventListener('load', () => {
             controlsPanel.classList.add('collapsed');
         }
     }
+
+    setTimeout(updateLegend, 100);
 });
 
 // Controls toggle functionality
@@ -1739,11 +1734,12 @@ function renderBookmarks() {
         return;
     }
     bookmarksList.innerHTML = bookmarks.map((b, i) =>
-        '<div style=\"flex:1; display:flex; align-items:center; gap:8px;\" onclick=\"flyToBookmark(' + i + ')\">' +
-        '<div style=\"color:#f59e0b;\">' + ICONS.bookmark + '</div>' +
-        '<div><div style=\"color:#e2e8f0; font-size:0.85rem; font-weight:500;\">' + b.name + '</div>' +
-        '<div style=\"color:#94a3b8; font-size:0.7rem;\">' + b.lat.toFixed(5) + ', ' + b.lon.toFixed(5) + '</div></div></div>' +
-        '<button onclick=\"deleteBookmark(' + i + ')\" style=\"background:none; border:none; color:#ef4444; cursor:pointer; padding:4px;\">' + ICONS.trash + '</button></div>'
+        '<div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
+        '<div style="flex:1; display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="flyToBookmark(' + i + ')">' +
+        '<div style="color:#f59e0b;">' + ICONS.bookmark + '</div>' +
+        '<div><div style="color:#e2e8f0; font-size:0.85rem; font-weight:500;">' + b.name + '</div>' +
+        '<div style="color:#94a3b8; font-size:0.7rem;">' + b.lat.toFixed(5) + ', ' + b.lon.toFixed(5) + '</div></div></div>' +
+        '<button onclick="deleteBookmark(' + i + ')" style="background:none; border:none; color:#ef4444; cursor:pointer; padding:4px;">' + ICONS.trash + '</button></div>'
     ).join('');
 }
 
@@ -1966,42 +1962,7 @@ function dismissToast() {
     if (window.toastTimeout) { clearTimeout(window.toastTimeout); window.toastTimeout = null; }
 }
 
-// Run once on load to initialize legend state
-window.addEventListener('load', () => {
-    setTimeout(updateLegend, 100);
-});
 
-// Mobile Tooltip Helper: Shows what an icon does when touched (since mobile has no hover)
-document.addEventListener('touchstart', (e) => {
-    let target = e.target.closest('.fab-btn, .maplibregl-ctrl button');
-    if (target) {
-        let title = target.getAttribute('title') || target.getAttribute('aria-label');
-        
-        // Prefer explicit tooltips for FABs
-        if (target.classList.contains('fab-btn')) {
-            let tooltipSpan = target.querySelector('.fab-tooltip');
-            if (tooltipSpan) title = tooltipSpan.innerText;
-        }
-        
-        if (title) {
-            let existing = document.getElementById('mobile-quick-tooltip');
-            if (!existing) {
-                existing = document.createElement('div');
-                existing.id = 'mobile-quick-tooltip';
-                // Small black pill tooltip at the top center
-                existing.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(15,23,42,0.9); border:1px solid rgba(139,92,246,0.5); color:#fff; padding:6px 14px; border-radius:20px; font-size:0.85rem; z-index:99999; pointer-events:none; transition:opacity 0.2s; box-shadow:0 4px 10px rgba(0,0,0,0.3); font-weight:500;';
-                document.body.appendChild(existing);
-            }
-            existing.innerText = title;
-            existing.style.opacity = '1';
-            
-            clearTimeout(window.mobileTooltipTimer);
-            window.mobileTooltipTimer = setTimeout(() => {
-                if(existing) existing.style.opacity = '0';
-            }, 2000); // Hide after 2 seconds
-        }
-    }
-}, {passive: true});
 
 // =============================================
 // EXECUTIVE SUMMARY DASHBOARD & LOCAL SEARCH LOGIC
@@ -2036,7 +1997,7 @@ async function loadSearchIndex() {
         // PERF-1: Build grid spatial index for fast viewport queries
         buildSpatialGrid();
         updateViewportStats();
-        populateQueryDropdowns();
+        initQueryDropdowns();
     } catch (e) {
         console.error('Failed to load search index:', e);
     } finally {
@@ -2045,13 +2006,17 @@ async function loadSearchIndex() {
 }
 
 // --- PERF-3: Simple IndexedDB helpers (key-value store) ---
+let _idbPromise = null;
 function idbOpen() {
-    return new Promise((resolve, reject) => {
-        const req = indexedDB.open('lhzm_cache', 1);
-        req.onupgradeneeded = () => req.result.createObjectStore('kv');
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-    });
+    if (!_idbPromise) {
+        _idbPromise = new Promise((resolve, reject) => {
+            const req = indexedDB.open('lhzm_cache', 1);
+            req.onupgradeneeded = () => req.result.createObjectStore('kv');
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => { _idbPromise = null; reject(req.error); };
+        });
+    }
+    return _idbPromise;
 }
 function idbGet(key) {
     return idbOpen().then(db => new Promise((resolve, reject) => {
@@ -2648,9 +2613,10 @@ function applyAdvancedFilters() {
         { toggleId: 'layer-tiz',           loaderFn: () => window.loadTizzones && window.loadTizzones(),         layerId: 'tiz_zones_fill' },
         { toggleId: 'layer-tiz-50k',       loaderFn: () => window.loadTizzones50k && window.loadTizzones50k(),  layerId: 'tiz_50k_fill' },
         { toggleId: 'layer-satellite-ls',  loaderFn: () => window.loadSatelliteLs && window.loadSatelliteLs(),  layerId: 'satellite_polygons' },
-        { toggleId: 'layer-contours',      loaderFn: () => window.loadContours && window.loadContours(),         layerId: 'contours_line' },
-
+        { toggleId: 'layer-contours',      loaderFn: () => window.loadContours && window.loadContours(),         layerId: 'contours_line' }
     ];
+
+    const activeSpinners = new Set();
 
     lazyLayers.forEach(({ toggleId, loaderFn, layerId }) => {
         const checkbox = document.getElementById(toggleId);
@@ -2658,28 +2624,36 @@ function applyAdvancedFilters() {
 
         checkbox.addEventListener('change', function() {
             if (!this.checked) return;
-            // Only add spinner if the layer isn't loaded yet
             if (map.getLayer(layerId)) return;
 
             const label = this.closest('.layer-toggle')?.querySelector('.layer-label');
             if (!label) return;
 
-            // Add spinner
-            const spinner = document.createElement('span');
-            spinner.className = 'layer-loading-spinner';
-            spinner.id = 'spinner-' + toggleId;
-            label.appendChild(spinner);
+            if (!label.querySelector('#spinner-' + toggleId)) {
+                const spinner = document.createElement('span');
+                spinner.className = 'layer-loading-spinner';
+                spinner.id = 'spinner-' + toggleId;
+                label.appendChild(spinner);
+                activeSpinners.add(toggleId);
 
-            // Poll until layer exists (max 15s)
-            let attempts = 0;
-            const poll = setInterval(() => {
-                attempts++;
-                if (map.getLayer(layerId) || attempts > 150) {
-                    clearInterval(poll);
-                    const existing = label.querySelector('.layer-loading-spinner');
-                    if (existing) existing.remove();
-                }
-            }, 100);
+                // Auto-cleanup failsafe after 15s
+                setTimeout(() => {
+                    spinner.remove();
+                    activeSpinners.delete(toggleId);
+                }, 15000);
+            }
+        });
+    });
+
+    // Event-driven removal: Remove spinners immediately when layer style is added
+    map.on('styledata', () => {
+        if (activeSpinners.size === 0) return;
+        lazyLayers.forEach(({ toggleId, layerId }) => {
+            if (activeSpinners.has(toggleId) && map.getLayer(layerId)) {
+                const spinner = document.getElementById('spinner-' + toggleId);
+                if (spinner) spinner.remove();
+                activeSpinners.delete(toggleId);
+            }
         });
     });
 })();
