@@ -2488,6 +2488,59 @@ function resetAllFilters() {
     applyAdvancedFilters();
 }
 
+function zoomToFilteredBounds() {
+    if (!localSearchIndex || localSearchIndex.length === 0) return;
+
+    // Filter items according to currentFilters
+    const matchedItems = localSearchIndex.filter(item => {
+        if (currentFilters.dis && item.dis.trim().toLowerCase() !== currentFilters.dis.trim().toLowerCase()) return false;
+        if (currentFilters.d && item.d.trim().toLowerCase() !== currentFilters.d.trim().toLowerCase()) return false;
+        if (currentFilters.cat && !(item.cat || '').includes(currentFilters.cat)) return false;
+        if (currentFilters.r) {
+            const cls = classifyRisk(item.r);
+            if (currentFilters.r === 'HR' && cls !== 'HR') return false;
+            if (currentFilters.r === 'MR' && cls !== 'MR') return false;
+            if (currentFilters.r === 'LR' && cls !== 'LR') return false;
+        }
+        return true;
+    });
+
+    if (matchedItems.length === 0) return;
+
+    let minLon = 180, minLat = 90, maxLon = -180, maxLat = -90;
+    matchedItems.forEach(item => {
+        if (item.lon < minLon) minLon = item.lon;
+        if (item.lat < minLat) minLat = item.lat;
+        if (item.lon > maxLon) maxLon = item.lon;
+        if (item.lat > maxLat) maxLat = item.lat;
+    });
+
+    // Auto-ensure inspection layer is loaded & visible whenever user queries
+    if (!window.inspectionLoaded && window.loadInspection) {
+        window.loadInspection();
+    }
+    const layerBox = document.getElementById('layer-inspection');
+    if (layerBox && !layerBox.checked) {
+        layerBox.checked = true;
+        if (map.getLayer('inspection_points')) {
+            map.setLayoutProperty('inspection_points', 'visibility', 'visible');
+        }
+        const advPanel = document.getElementById('advanced-query-panel');
+        const dashPanel = document.getElementById('dashboard-panel');
+        if (advPanel) advPanel.style.display = 'flex';
+        if (dashPanel) dashPanel.style.display = 'block';
+    }
+
+    if (matchedItems.length === 1) {
+        map.flyTo({ center: [matchedItems[0].lon, matchedItems[0].lat], zoom: 15 });
+    } else {
+        map.fitBounds(
+            [[minLon, minLat], [maxLon, maxLat]],
+            { padding: { top: 60, bottom: 60, left: 60, right: 60 }, maxZoom: 15, duration: 1200 }
+        );
+    }
+}
+
 function handleFilterChange(e) {
     const targetId = e.target.id;
     if (targetId === 'query-district') {
@@ -2496,6 +2549,7 @@ function handleFilterChange(e) {
     
     updateDropdownStates();
     applyAdvancedFilters();
+    zoomToFilteredBounds();
 }
 
 function populateQueryDropdowns() {
@@ -2592,6 +2646,9 @@ function applyAdvancedFilters() {
     }
     
     // Apply filter to map
+    if (!window.inspectionLoaded && window.loadInspection) {
+        window.loadInspection();
+    }
     if (map.getLayer('inspection_points')) {
         map.setFilter('inspection_points', filterArray.length > 1 ? filterArray : null);
     }
