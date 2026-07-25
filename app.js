@@ -13,7 +13,8 @@ let summaryStats = null;
 let currentFilters = { dis: '', r: '', d: '', g: '' };
 
 
-let protocol = new pmtiles.Protocol();
+const pmtilesCache = new pmtiles.KeyedCache();
+let protocol = new pmtiles.Protocol({ cache: pmtilesCache });
 maplibregl.addProtocol("pmtiles", protocol.tile);
 
 // Icon Constants
@@ -884,7 +885,11 @@ function ensureLayersLoaded(layers, callback) {
                 map.addSource(item.source, item.config);
             }
             if (item.layer) {
-                map.addLayer(item.layer, 'z-index-2-hazards_50k');
+                let beforeId = 'z-index-1-base'; // Default basemap behind all hazards
+                if (item.layer.id === 'hybrid-labels') {
+                    beforeId = 'z-index-5-overlays'; // Labels above hazards
+                }
+                map.addLayer(item.layer, beforeId);
             }
         });
 
@@ -2262,9 +2267,9 @@ function updateViewportStats() {
         {
             // Apply advanced filters so dashboard matches the filtered map dots
             // Use case-insensitive comparison because dropdown values are Title Case via cleanName()
-            if (currentFilters.dis && (item.dis || '').toLowerCase() !== currentFilters.dis.toLowerCase()) continue;
-            if (currentFilters.d && (item.d || '').toLowerCase() !== currentFilters.d.toLowerCase()) continue;
-            if (currentFilters.g && (item.g || '').toLowerCase() !== currentFilters.g.toLowerCase()) continue;
+            if (currentFilters.dis && cleanName(item.dis).toLowerCase() !== cleanName(currentFilters.dis).toLowerCase()) continue;
+            if (currentFilters.d && cleanName(item.d).toLowerCase() !== cleanName(currentFilters.d).toLowerCase()) continue;
+            if (currentFilters.g && cleanName(item.g).toLowerCase() !== cleanName(currentFilters.g).toLowerCase()) continue;
             
             const cls = classifyRisk(item.r);
             
@@ -2597,25 +2602,27 @@ function applyAdvancedFilters() {
     }
     
     if (currentFilters.d) {
-        // Because zero-width joiners and case mismatch might exist in the raw geojson properties
-        // compared to the cleaned currentFilters.d, we use a regex or a very lenient string match if possible.
-        // Mapbox GL JS does not have regex filters, but we can check if indexof the original cleaned is > -1,
-        // however Mapbox expressions are tricky. The best approach is to fix the GeoJSON beforehand, 
-        // but here we can try to compare against upcased DSD.
-        // Wait, Mapbox doesn't support stripping characters dynamically.
+        const cleanD = currentFilters.d.trim();
         filterArray.push(['any', 
-            ['==', ['get', 'DSD'], currentFilters.d],
-            ['==', ['upcase', ['coalesce', ['get', 'DSD'], '']], currentFilters.d.toUpperCase()],
-            ['==', ['downcase', ['coalesce', ['get', 'DSD'], '']], currentFilters.d.toLowerCase()]
+            ['==', ['get', 'DSD'], cleanD],
+            ['==', ['get', 'DS Division'], cleanD],
+            ['==', ['upcase', ['coalesce', ['get', 'DSD'], '']], cleanD.toUpperCase()],
+            ['==', ['upcase', ['coalesce', ['get', 'DS Division'], '']], cleanD.toUpperCase()],
+            ['in', cleanD.toLowerCase(), ['downcase', ['coalesce', ['get', 'DSD'], '']]],
+            ['in', cleanD.toLowerCase(), ['downcase', ['coalesce', ['get', 'DS Division'], '']]]
         ]);
     }
     
     if (currentFilters.g) {
+        const cleanG = currentFilters.g.trim();
         filterArray.push(['any', 
-            ['==', ['get', 'GND'], currentFilters.g],
-            ['==', ['get', 'GND_Name'], currentFilters.g],
-            ['==', ['upcase', ['coalesce', ['get', 'GND'], '']], currentFilters.g.toUpperCase()],
-            ['==', ['upcase', ['coalesce', ['get', 'GND_Name'], '']], currentFilters.g.toUpperCase()]
+            ['==', ['get', 'GND'], cleanG],
+            ['==', ['get', 'Name of GND'], cleanG],
+            ['==', ['get', 'GND_Name'], cleanG],
+            ['==', ['upcase', ['coalesce', ['get', 'GND'], '']], cleanG.toUpperCase()],
+            ['==', ['upcase', ['coalesce', ['get', 'Name of GND'], '']], cleanG.toUpperCase()],
+            ['in', cleanG.toLowerCase(), ['downcase', ['coalesce', ['get', 'GND'], '']]],
+            ['in', cleanG.toLowerCase(), ['downcase', ['coalesce', ['get', 'Name of GND'], '']]]
         ]);
     }
     
