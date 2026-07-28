@@ -1972,7 +1972,7 @@ let _searchIndexLoading = false;
 async function loadSearchIndex() {
     if (localSearchIndex.length > 0 || _searchIndexLoading) return;
     _searchIndexLoading = true;
-    const cacheKey = 'search_index_' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v49');
+    const cacheKey = 'search_index_' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v55');
     try {
         // PERF-3: Try IndexedDB first (version-bound cache)
         let loaded = false;
@@ -1986,7 +1986,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=` + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v49');
+            const url = `${DATA_BASE_URL}/search_index.json?v=` + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v55');
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
