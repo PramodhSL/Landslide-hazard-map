@@ -414,7 +414,7 @@ map.on('load', () => {
     };
 
 
-    // 5. SATELLITE LANDSLIDES (Lazy — only fetched when the toggle is first turned ON)
+    // 5. SATELLITE LANDSLIDES (Lazy — vector PMTiles from Cloudflare R2)
     window.satelliteLsLoaded = false;
     window.loadSatelliteLs = function () {
         if (window.satelliteLsLoaded) return;
@@ -426,16 +426,35 @@ map.on('load', () => {
             attribution: 'Human Settlement & Planning Division'
         });
 
+        // 1. Semi-transparent Orange Polygon Fill
         map.addLayer({
-            'id': 'satellite_polygons',
+            'id': 'satellite_polygons_fill',
+            'type': 'fill',
+            'source': 'satellite_landslides',
+            'source-layer': 'satellite_landslides',
+            'filter': ['==', ['get', 'type'], 'landslide_polygon'],
+            'paint': {
+                'fill-color': '#f97316',
+                'fill-opacity': 0.45
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-5-overlays');
+
+        // 2. Crisp Solid Dark-Orange Outline
+        map.addLayer({
+            'id': 'satellite_polygons_line',
             'type': 'line',
             'source': 'satellite_landslides',
             'source-layer': 'satellite_landslides',
             'filter': ['==', ['get', 'type'], 'landslide_polygon'],
-            'paint': { 'line-color': '#f97316', 'line-width': 2 },
+            'paint': {
+                'line-color': '#c2410c',
+                'line-width': 2
+            },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-5-overlays');
 
+        // 3. Incident Points
         map.addLayer({
             'id': 'satellite_points',
             'type': 'circle',
@@ -443,14 +462,13 @@ map.on('load', () => {
             'source-layer': 'satellite_landslides',
             'filter': ['==', ['get', 'type'], 'incident_point'],
             'paint': {
-                'circle-radius': 5,
-                'circle-color': '#f97316',
-                'circle-stroke-width': 1,
+                'circle-radius': 6,
+                'circle-color': '#ea580c',
+                'circle-stroke-width': 1.5,
                 'circle-stroke-color': '#ffffff'
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-5-overlays');
-
     };
 
 
@@ -466,7 +484,8 @@ map.on('load', () => {
             'inspection_points',
             'satellite_points',
             'arg_locations_points',
-            'satellite_polygons',
+            'satellite_polygons_fill',
+            'satellite_polygons_line',
             'tiz_zones_fill',
             'tiz_50k_fill',
             'hazard_10k_fill',
@@ -792,7 +811,8 @@ safeAddEventListener('layer-arg-thiessen', 'change', (e) => {
 safeAddEventListener('layer-satellite-ls', 'change', (e) => {
     if (e.target.checked && !window.satelliteLsLoaded) window.loadSatelliteLs();
     const visibility = e.target.checked ? 'visible' : 'none';
-    if (map.getLayer('satellite_polygons')) map.setLayoutProperty('satellite_polygons', 'visibility', visibility);
+    if (map.getLayer('satellite_polygons_fill')) map.setLayoutProperty('satellite_polygons_fill', 'visibility', visibility);
+    if (map.getLayer('satellite_polygons_line')) map.setLayoutProperty('satellite_polygons_line', 'visibility', visibility);
     if (map.getLayer('satellite_points')) map.setLayoutProperty('satellite_points', 'visibility', visibility);
 });
 
