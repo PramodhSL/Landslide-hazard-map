@@ -2095,7 +2095,7 @@ function queryGrid(west, east, south, north) {
 
 async function loadDashboardAndSearchData() {
     try {
-        const res = await fetch(`${DATA_BASE_URL}/summary.json`);
+        const res = await fetch(`${DATA_BASE_URL}/summary.json?v=` + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : Date.now()));
         if (res.ok) {
             summaryStats = await res.json();
             populateDashboard(summaryStats);
