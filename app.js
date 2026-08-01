@@ -193,18 +193,16 @@ map.on('load', () => {
         window.inspectionLoaded = true;
 
         map.addSource('inspection_reports', {
-            type: 'geojson',
-            data: `${DATA_BASE_URL}/inspection_reports.geojson?v=${APP_VERSION}`,
-            cluster: false
+            type: 'vector',
+            url: `pmtiles://${DATA_BASE_URL}/inspection_reports.pmtiles?v=${APP_VERSION}`
         });
 
-
-
-        // Unclustered Points (Individual dots)
+        // Inspection Report Points (Individual dots via PMTiles vector stream)
         map.addLayer({
             'id': 'inspection_points',
             'type': 'circle',
             'source': 'inspection_reports',
+            'source-layer': 'inspection_reports',
             'paint': {
                 'circle-radius': 6, 
                 'circle-color': [
