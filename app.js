@@ -2286,13 +2286,20 @@ function updateViewportStats() {
     animateKpi(kpiMr,     mrCount);
     animateKpi(kpiLr,     lrCount);
 
-    // Update total KPI (immutable — from summary.json)
+    // Update TOTAL KPI — shows filtered total when a filter is active, global total otherwise
     if (summaryStats) {
         const kpiTotal = document.getElementById('kpi-total');
-        if (kpiTotal && !kpiTotal.dataset.set) {
-            kpiTotal.dataset.set = '1';
-            kpiTotal.innerHTML = summaryStats.total_mapped.toLocaleString() +
-                '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>';
+        if (kpiTotal) {
+            const hasFilter = !!(currentFilters.dis || currentFilters.d || currentFilters.r || currentFilters.cat);
+            if (hasFilter) {
+                // When filtered, TOTAL = same as IN VIEW (only the matched subset)
+                kpiTotal.innerHTML = totalMapped.toLocaleString() +
+                    '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">filtered</span>';
+            } else {
+                // No filter: show immutable global total
+                kpiTotal.innerHTML = summaryStats.total_mapped.toLocaleString() +
+                    '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>';
+            }
         }
     }
 
