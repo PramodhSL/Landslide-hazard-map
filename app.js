@@ -1990,7 +1990,7 @@ let _searchIndexLoading = false;
 async function loadSearchIndex() {
     if (localSearchIndex.length > 0 || _searchIndexLoading) return;
     _searchIndexLoading = true;
-    const cacheKey = 'search_index_' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v55');
+    const cacheKey = 'search_index_' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v58');
     try {
         // PERF-3: Try IndexedDB first (version-bound cache)
         let loaded = false;
@@ -1998,13 +1998,19 @@ async function loadSearchIndex() {
             try {
                 const cached = await idbGet(cacheKey);
                 if (cached && Array.isArray(cached) && cached.length > 0) {
-                    localSearchIndex = cached;
-                    loaded = true;
+                    // Check if cached size matches current summaryStats
+                    if (summaryStats && summaryStats.total_mapped && cached.length !== summaryStats.total_mapped) {
+                        console.warn("Cached index size mismatch, reloading freshly...");
+                        loaded = false;
+                    } else {
+                        localSearchIndex = cached;
+                        loaded = true;
+                    }
                 }
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=` + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v55');
+            const url = `${DATA_BASE_URL}/search_index.json?v=` + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : Date.now());
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2278,6 +2284,11 @@ function updateViewportStats() {
             else if (cls === 'MR') districtMap[distName].mr++;
             else if (cls === 'LR') districtMap[distName].lr++;
         }
+    }
+
+    // Clamp in-view totalMapped so it never exceeds localSearchIndex length or summary total
+    if (summaryStats && summaryStats.total_mapped && !currentFilters.dis && !currentFilters.d && !currentFilters.r && !currentFilters.cat) {
+        if (totalMapped > summaryStats.total_mapped) totalMapped = summaryStats.total_mapped;
     }
 
     // Update In-View KPIs with animated count
