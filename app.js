@@ -614,24 +614,33 @@ function showPopupForFeature(feature, coordinates) {
 
         // Build list of details dynamically
         let detailsHtml = '';
-        const gpsKeys = ['latitude', 'longitude', 'gps', 'e', 'n', 'x', 'y', 'coordinate', 'coordinates', 'geometry', 'fid', 'objectid', 'source file', 'source sheet', 'typing', 'gps (wgs 84, in decimal degrees)'];
+        const skipKeys = [
+            'latitude', 'longitude', 'gps', 'e', 'n', 'x', 'y', 'coordinate', 'coordinates', 'geometry', 'fid', 'objectid', 
+            'source file', 'source sheet', 'typing', 'name', 'name of landslide victim', 'nic'
+        ];
 
         for (const key in props) {
             if (props[key] !== null && props[key] !== undefined) {
                 const valStr = props[key].toString().trim();
-                if (valStr === '' || valStr === 'N/A') continue;
+                const lowerVal = valStr.toLowerCase();
+                
+                // Hide empty, null, N/A, nan, None, or zero placeholder values completely
+                if (valStr === '' || lowerVal === 'n/a' || lowerVal === 'nan' || lowerVal === 'none' || 
+                    lowerVal === 'null' || lowerVal === '<null>' || lowerVal === '-' || lowerVal === '0' || lowerVal === '0.0') {
+                    continue;
+                }
 
                 const cleanKey = key.trim();
                 const lowerKey = cleanKey.toLowerCase();
                 
-                // Skip GPS and metadata keys, including single letters E/N/X/Y
-                if (gpsKeys.includes(lowerKey) || 
-                    lowerKey.includes('gps') || 
+                // Skip coordinates, person name, and duplicate _1/_2/unnamed columns
+                if (skipKeys.includes(lowerKey) || 
+                    lowerKey.includes('gps') || lowerKey.startsWith('unnamed') || lowerKey.endsWith('_1') || lowerKey.endsWith('_2') ||
                     lowerKey === 'e' || lowerKey === 'n' || lowerKey === 'x' || lowerKey === 'y') {
                     continue;
                 }
 
-                // If key is Ref. Code or Ref. No., it is already in the header
+                // If key is Ref. Code or Ref. No., it is already shown in the popup header
                 if (lowerKey === 'ref. code' || lowerKey === 'ref. no.' || lowerKey === 'ref no' || lowerKey === 'reference number') {
                     continue;
                 }
