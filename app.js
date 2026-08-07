@@ -591,21 +591,24 @@ function showPopupForFeature(feature, coordinates) {
         const refNo = String(rawRef).replace(/NBRO/g, 'NBRI');
         const risk = getPropVal(props, ['HR (Priority level)', 'Risk level', 'Risk']) || 'N/A';
 
-        // Badge styling based on risk
+        // Badge styling based on risk (HR1, HR2, HR3 use 3 distinct shades of Red)
         let badgeColor = '#3b82f6'; // default blue
         let badgeBg = 'rgba(59, 130, 246, 0.15)';
         const riskUpper = risk.toString().toUpperCase();
         if (riskUpper.includes('P1') || riskUpper.includes('HR1') || riskUpper.includes('HR 1')) {
-            badgeColor = '#ef4444'; // Red
-            badgeBg = 'rgba(239, 68, 68, 0.15)';
+            badgeColor = '#7f1d1d'; // Dark Crimson Red
+            badgeBg = 'rgba(127, 29, 29, 0.25)';
         } else if (riskUpper.includes('P2') || riskUpper.includes('HR2') || riskUpper.includes('HR 2')) {
-            badgeColor = '#f97316'; // Orange
-            badgeBg = 'rgba(249, 115, 22, 0.15)';
+            badgeColor = '#dc2626'; // Pure Medium Red
+            badgeBg = 'rgba(220, 38, 38, 0.25)';
         } else if (riskUpper.includes('P3') || riskUpper.includes('HR3') || riskUpper.includes('HR 3')) {
-            badgeColor = '#f59e0b'; // Amber
-            badgeBg = 'rgba(245, 158, 11, 0.15)';
+            badgeColor = '#f87171'; // Light Coral Red
+            badgeBg = 'rgba(248, 113, 113, 0.25)';
+        } else if (riskUpper.includes('HR')) {
+            badgeColor = '#dc2626'; // Generic HR Red
+            badgeBg = 'rgba(220, 38, 38, 0.25)';
         } else if (riskUpper.includes('MR') || riskUpper.includes('MEDIUM')) {
-            badgeColor = '#eab308'; // Yellow
+            badgeColor = '#eab308'; // Gold Yellow
             badgeBg = 'rgba(234, 179, 8, 0.15)';
         } else if (riskUpper.includes('LR') || riskUpper.includes('LOW')) {
             badgeColor = '#10b981'; // Green
