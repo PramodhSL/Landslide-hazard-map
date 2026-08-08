@@ -1301,7 +1301,7 @@
         /* Toast Notifications */
         .toast-container {
             position: fixed;
-            bottom: 2rem;
+            bottom: max(2rem, calc(1.5rem + env(safe-area-inset-bottom, 0px)));
             left: 50%;
             transform: translateX(-50%);
             z-index: 10000;
@@ -1550,15 +1550,10 @@ input:checked + .slider:active:before { transform: translateX(18px); }
     }
 }
 
-@media (max-width: 480px) {
-    .dashboard-panel {
-        top: 7.5rem;
-        left: 0.5rem;
-        right: 0.5rem;
-        width: auto;
-        max-height: 38vh;
-    }
-}
+
+/* NOTE: .dashboard-panel is hidden on mobile (max-width:768px) via display:none !important
+   The 480px override below is intentionally removed - it was dead code (panel is already hidden). */
+
 
 /* Custom Modern Popup Styles */
 .custom-modern-popup .maplibregl-popup-content {
@@ -1669,10 +1664,7 @@ input:checked + .slider:active:before { transform: translateX(18px); }
     flex-shrink: 0;
 }
 
-/* Controls panel position: fixed needed for ::after gradient border */
-.controls-panel {
-    position: fixed;
-}
+/* Controls panel position is set in main block and mobile overrides above */
 
 /* KPI card improvements */
 .kpi-card {
