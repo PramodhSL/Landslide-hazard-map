@@ -2258,88 +2258,87 @@ function updateViewportStats() {
     const north  = bounds.getNorth();
     const south  = bounds.getSouth();
 
-    let totalMapped = 0, hrCount = 0, mrCount = 0, lrCount = 0, noneCount = 0;
-    // District grouping: { districtName: { total, hr, mr, lr } }
+    let totalInView = 0, hrInView = 0, mrInView = 0, lrInView = 0, noneInView = 0;
+    let globalFilteredTotal = 0, globalHr = 0, globalMr = 0, globalLr = 0, globalNone = 0;
+    
+    // District grouping from ALL matching points across the island (stable & persistent)
     const districtMap = {};
 
-    // PERF-1: Use grid spatial index for fast viewport query instead of scanning all 7,000+ points
-    const viewportItems = Object.keys(spatialGrid).length > 0 ? queryGrid(west, east, south, north) : localSearchIndex.filter(item => item.lon >= west && item.lon <= east && item.lat >= south && item.lat <= north);
+    for (let i = 0; i < localSearchIndex.length; i++) {
+        const item = localSearchIndex[i];
 
-    for (let i = 0; i < viewportItems.length; i++) {
-        const item = viewportItems[i];
-        {
-            // Apply advanced filters so dashboard matches the filtered map dots
-            // Use case-insensitive comparison because dropdown values are Title Case via cleanName()
-            if (currentFilters.dis && item.dis.trim().toLowerCase() !== currentFilters.dis.trim().toLowerCase()) continue;
-            if (currentFilters.d && item.d.trim().toLowerCase() !== currentFilters.d.trim().toLowerCase()) continue;
-            if (currentFilters.cat && !(item.cat || '').includes(currentFilters.cat)) continue;
-            
-            const cls = classifyRisk(item.r);
-            
-            if (currentFilters.r) {
-                if (currentFilters.r === 'HR' && cls !== 'HR') continue;
-                if (currentFilters.r === 'MR' && cls !== 'MR') continue;
-                if (currentFilters.r === 'LR' && cls !== 'LR') continue;
-            }
-            
-            totalMapped++;
-            if      (cls === 'HR') hrCount++;
-            else if (cls === 'MR') mrCount++;
-            else if (cls === 'LR') lrCount++;
-            else                   noneCount++;
+        // Apply advanced filters
+        if (currentFilters.dis && item.dis.trim().toLowerCase() !== currentFilters.dis.trim().toLowerCase()) continue;
+        if (currentFilters.d && item.d.trim().toLowerCase() !== currentFilters.d.trim().toLowerCase()) continue;
+        if (currentFilters.cat && !(item.cat || '').includes(currentFilters.cat)) continue;
 
-            // Group by district
-            const distName = item.dis || 'Unknown';
-            if (!districtMap[distName]) districtMap[distName] = { total:0, hr:0, mr:0, lr:0 };
-            districtMap[distName].total++;
-            if      (cls === 'HR') districtMap[distName].hr++;
-            else if (cls === 'MR') districtMap[distName].mr++;
-            else if (cls === 'LR') districtMap[distName].lr++;
+        const cls = classifyRisk(item.r);
+
+        if (currentFilters.r) {
+            if (currentFilters.r === 'HR' && cls !== 'HR') continue;
+            if (currentFilters.r === 'MR' && cls !== 'MR') continue;
+            if (currentFilters.r === 'LR' && cls !== 'LR') continue;
+        }
+
+        // Tally global filtered totals (island-wide)
+        globalFilteredTotal++;
+        if      (cls === 'HR') globalHr++;
+        else if (cls === 'MR') globalMr++;
+        else if (cls === 'LR') globalLr++;
+        else                   globalNone++;
+
+        // Group by district (island-wide for accurate persistent counts)
+        const distName = item.dis || 'Unknown';
+        if (!districtMap[distName]) districtMap[distName] = { total: 0, hr: 0, mr: 0, lr: 0 };
+        districtMap[distName].total++;
+        if      (cls === 'HR') districtMap[distName].hr++;
+        else if (cls === 'MR') districtMap[distName].mr++;
+        else if (cls === 'LR') districtMap[distName].lr++;
+
+        // Check if point is inside current screen viewport
+        if (item.lon >= west && item.lon <= east && item.lat >= south && item.lat <= north) {
+            totalInView++;
+            if      (cls === 'HR') hrInView++;
+            else if (cls === 'MR') mrInView++;
+            else if (cls === 'LR') lrInView++;
+            else                   noneInView++;
         }
     }
 
-    // Clamp in-view totalMapped so it never exceeds localSearchIndex length or summary total
-    if (summaryStats && summaryStats.total_mapped && !currentFilters.dis && !currentFilters.d && !currentFilters.r && !currentFilters.cat) {
-        if (totalMapped > summaryStats.total_mapped) totalMapped = summaryStats.total_mapped;
-    }
-
     // Update In-View KPIs with animated count
-    animateKpi(kpiMapped, totalMapped);
-    animateKpi(kpiHr,     hrCount);
-    animateKpi(kpiMr,     mrCount);
-    animateKpi(kpiLr,     lrCount);
+    animateKpi(kpiMapped, totalInView);
+    animateKpi(kpiHr,     hrInView);
+    animateKpi(kpiMr,     mrInView);
+    animateKpi(kpiLr,     lrInView);
 
-    // Update TOTAL KPI — shows filtered total when a filter is active, global total otherwise
-    if (summaryStats) {
-        const kpiTotal = document.getElementById('kpi-total');
-        if (kpiTotal) {
-            const hasFilter = !!(currentFilters.dis || currentFilters.d || currentFilters.r || currentFilters.cat);
-            if (hasFilter) {
-                // When filtered, TOTAL = same as IN VIEW (only the matched subset)
-                kpiTotal.innerHTML = totalMapped.toLocaleString() +
-                    '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">filtered</span>';
-            } else {
-                // No filter: show immutable global total
-                kpiTotal.innerHTML = summaryStats.total_mapped.toLocaleString() +
-                    '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>';
-            }
+    // Update TOTAL (ALL) KPI card - persistent, immutable total!
+    const kpiTotal = document.getElementById('kpi-total');
+    if (kpiTotal) {
+        const hasFilter = !!(currentFilters.dis || currentFilters.d || currentFilters.r || currentFilters.cat);
+        if (hasFilter) {
+            kpiTotal.innerHTML = globalFilteredTotal.toLocaleString() +
+                '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">filtered total</span>';
+        } else {
+            const tot = (summaryStats && summaryStats.total_mapped) ? summaryStats.total_mapped : localSearchIndex.length;
+            kpiTotal.innerHTML = tot.toLocaleString() +
+                '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>';
         }
     }
 
     // Update proportional risk bar
-    if (riskBarCont && totalMapped > 0) {
+    if (riskBarCont && globalFilteredTotal > 0) {
         riskBarCont.style.display = 'flex';
-        const pct = (n) => (n / totalMapped * 100).toFixed(1) + '%';
-        if (barHr)   barHr.style.width   = pct(hrCount);
-        if (barMr)   barMr.style.width   = pct(mrCount);
-        if (barLr)   barLr.style.width   = pct(lrCount);
-        if (barNone) barNone.style.width = pct(noneCount);
+        const pct = (n) => (n / globalFilteredTotal * 100).toFixed(1) + '%';
+        if (barHr)   barHr.style.width   = pct(globalHr);
+        if (barMr)   barMr.style.width   = pct(globalMr);
+        if (barLr)   barLr.style.width   = pct(globalLr);
+        if (barNone) barNone.style.width = pct(globalNone);
     }
 
-    // Populate district-wise table
+    // Populate district-wise table (persistent island-wide counts)
     if (tbody) {
-        if (totalMapped === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#475569;padding:12px 0;">No incidents in current view</td></tr>';
+        if (globalFilteredTotal === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#475569;padding:12px 0;">No matching incidents</td></tr>';
         } else {
             // Sort districts by HR count desc, then total desc
             const districts = Object.entries(districtMap).sort((a, b) => {
@@ -2369,8 +2368,8 @@ function updateViewportStats() {
     // Footer timestamp
     if (footer) {
         const now = new Date();
-        const total = summaryStats ? summaryStats.total_mapped.toLocaleString() : totalMapped.toLocaleString();
-        footer.textContent = `Updated ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')} · Showing ${totalMapped.toLocaleString()} of ${total}`;
+        const fullTot = (summaryStats && summaryStats.total_mapped) ? summaryStats.total_mapped : localSearchIndex.length;
+        footer.textContent = `Updated ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')} · In view: ${totalInView.toLocaleString()} · Filtered: ${globalFilteredTotal.toLocaleString()} of ${fullTot.toLocaleString()}`;
     }
 }
 
