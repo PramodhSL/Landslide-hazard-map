@@ -5,7 +5,7 @@
     <script>
         // Force aggressive cache purge for returning users (safe against mobile storage restriction loops)
         // ⚠️ DEPLOY-1: When bumping version, also update CACHE_NAME in sw.js and style.css?v= in index.html
-        const APP_VERSION = "v59";
+        const APP_VERSION = "v60";
         try {
             if (localStorage.getItem('lhmpVersion') !== APP_VERSION && !window.location.search.includes('update=')) {
                 localStorage.setItem('lhmpVersion', APP_VERSION);
@@ -38,13 +38,15 @@
     <link rel="preconnect" href="https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev" crossorigin>
     
     <!-- Preload Critical Resources -->
-    <link rel="preload" href="maplibre-gl.js" as="script">
-    <link rel="preload" href="maplibre-gl.css" as="style">
-    <link rel="preload" href="style.css?v=59" as="style">
+    <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" as="style" crossorigin>
+    <link rel="preload" href="style.css?v=60" as="style">
+    <link rel="preconnect" href="https://unpkg.com" crossorigin>
+    <!-- Preload search index so it starts downloading before app.js requests it -->
+    <link rel="preload" href="https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/search_index.json?v=60" as="fetch" crossorigin>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="maplibre-gl.css" rel="stylesheet" />
-    <link href="style.css?v=59" rel="stylesheet" />
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" crossorigin />
+    <link href="style.css?v=60" rel="stylesheet" />
 </head>
 
 <body>
@@ -67,7 +69,7 @@
         <div class="app-title-bar">
             <span class="app-title-icon">🏔️</span>
             <span class="app-title-text">Landslide Hazard Zonation Map</span>
-            <span class="app-title-badge">Sri Lanka • v59</span>
+            <span class="app-title-badge">Sri Lanka • v60</span>
         </div>
         <div class="search-box">
             <div class="search-input-wrapper">
@@ -550,9 +552,10 @@
         </div>
     </div>
 
-    <script src="maplibre-gl.js"></script>
+    <!-- MapLibre GL from CDN for instant cache hits (fallback: local copy in sw.js) -->
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous"></script>
     <script src="pmtiles.js"></script>
-    <script src="app.js?v=59"></script>
+    <script src="app.js?v=60"></script>
 </body>
 
 </html>

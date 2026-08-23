@@ -12,6 +12,11 @@ let localSearchIndex = [];
 let summaryStats = null;
 let currentFilters = { dis: '', r: '', d: '', cat: '' };
 
+// Pre-computed cache of island-wide totals — rebuilt once after data loads or filter changes
+let _cachedDistrictMap = {};
+let _cachedGlobalTotals = { total: 0, hr: 0, mr: 0, lr: 0, none: 0 };
+let _cacheBuiltForFilter = null; // tracks which filter state the cache was built for
+
 
 let protocol = new pmtiles.Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
@@ -2034,6 +2039,8 @@ async function loadSearchIndex() {
         }
         // PERF-1: Build grid spatial index for fast viewport queries
         buildSpatialGrid();
+        // PERF-2: Pre-compute island-wide district totals once (avoids full scan on every pan)
+        buildGlobalCache();
         updateViewportStats();
         initQueryDropdowns();
     } catch (e) {
@@ -2086,6 +2093,38 @@ function buildSpatialGrid() {
         const key = gx + ',' + gy;
         if (!spatialGrid[key]) spatialGrid[key] = [];
         spatialGrid[key].push(i);
+    }
+}
+
+// PERF-2: Build global district totals cache (runs once on load, and again when filters change)
+function buildGlobalCache() {
+    const filterKey = JSON.stringify(currentFilters);
+    if (_cacheBuiltForFilter === filterKey) return; // already current
+    _cacheBuiltForFilter = filterKey;
+    _cachedDistrictMap = {};
+    _cachedGlobalTotals = { total: 0, hr: 0, mr: 0, lr: 0, none: 0 };
+    for (let i = 0; i < localSearchIndex.length; i++) {
+        const item = localSearchIndex[i];
+        if (currentFilters.dis && item.dis.trim().toLowerCase() !== currentFilters.dis.trim().toLowerCase()) continue;
+        if (currentFilters.d && item.d.trim().toLowerCase() !== currentFilters.d.trim().toLowerCase()) continue;
+        if (currentFilters.cat && !(item.cat || '').includes(currentFilters.cat)) continue;
+        const cls = classifyRisk(item.r);
+        if (currentFilters.r) {
+            if (currentFilters.r === 'HR' && cls !== 'HR') continue;
+            if (currentFilters.r === 'MR' && cls !== 'MR') continue;
+            if (currentFilters.r === 'LR' && cls !== 'LR') continue;
+        }
+        _cachedGlobalTotals.total++;
+        if      (cls === 'HR') _cachedGlobalTotals.hr++;
+        else if (cls === 'MR') _cachedGlobalTotals.mr++;
+        else if (cls === 'LR') _cachedGlobalTotals.lr++;
+        else                   _cachedGlobalTotals.none++;
+        const distName = item.dis || 'Unknown';
+        if (!_cachedDistrictMap[distName]) _cachedDistrictMap[distName] = { total:0, hr:0, mr:0, lr:0 };
+        _cachedDistrictMap[distName].total++;
+        if      (cls === 'HR') _cachedDistrictMap[distName].hr++;
+        else if (cls === 'MR') _cachedDistrictMap[distName].mr++;
+        else if (cls === 'LR') _cachedDistrictMap[distName].lr++;
     }
 }
 
@@ -2252,57 +2291,34 @@ function updateViewportStats() {
         return;
     }
 
+    // Ensure global cache is current for the active filter state
+    buildGlobalCache();
+
+    // FAST: Only scan the viewport for the "In View" counter using spatial grid
     const bounds = map.getBounds();
-    const west   = bounds.getWest();
-    const east   = bounds.getEast();
-    const north  = bounds.getNorth();
-    const south  = bounds.getSouth();
+    const west = bounds.getWest(), east = bounds.getEast();
+    const south = bounds.getSouth(), north = bounds.getNorth();
 
-    let totalInView = 0, hrInView = 0, mrInView = 0, lrInView = 0, noneInView = 0;
-    let globalFilteredTotal = 0, globalHr = 0, globalMr = 0, globalLr = 0, globalNone = 0;
-    
-    // District grouping from ALL matching points across the island (stable & persistent)
-    const districtMap = {};
+    let totalInView = 0, hrInView = 0, mrInView = 0, lrInView = 0;
+    const viewportItems = Object.keys(spatialGrid).length > 0
+        ? queryGrid(west, east, south, north)
+        : localSearchIndex.filter(it => it.lon >= west && it.lon <= east && it.lat >= south && it.lat <= north);
 
-    for (let i = 0; i < localSearchIndex.length; i++) {
-        const item = localSearchIndex[i];
-
-        // Apply advanced filters
+    for (let i = 0; i < viewportItems.length; i++) {
+        const item = viewportItems[i];
         if (currentFilters.dis && item.dis.trim().toLowerCase() !== currentFilters.dis.trim().toLowerCase()) continue;
         if (currentFilters.d && item.d.trim().toLowerCase() !== currentFilters.d.trim().toLowerCase()) continue;
         if (currentFilters.cat && !(item.cat || '').includes(currentFilters.cat)) continue;
-
         const cls = classifyRisk(item.r);
-
         if (currentFilters.r) {
             if (currentFilters.r === 'HR' && cls !== 'HR') continue;
             if (currentFilters.r === 'MR' && cls !== 'MR') continue;
             if (currentFilters.r === 'LR' && cls !== 'LR') continue;
         }
-
-        // Tally global filtered totals (island-wide)
-        globalFilteredTotal++;
-        if      (cls === 'HR') globalHr++;
-        else if (cls === 'MR') globalMr++;
-        else if (cls === 'LR') globalLr++;
-        else                   globalNone++;
-
-        // Group by district (island-wide for accurate persistent counts)
-        const distName = item.dis || 'Unknown';
-        if (!districtMap[distName]) districtMap[distName] = { total: 0, hr: 0, mr: 0, lr: 0 };
-        districtMap[distName].total++;
-        if      (cls === 'HR') districtMap[distName].hr++;
-        else if (cls === 'MR') districtMap[distName].mr++;
-        else if (cls === 'LR') districtMap[distName].lr++;
-
-        // Check if point is inside current screen viewport
-        if (item.lon >= west && item.lon <= east && item.lat >= south && item.lat <= north) {
-            totalInView++;
-            if      (cls === 'HR') hrInView++;
-            else if (cls === 'MR') mrInView++;
-            else if (cls === 'LR') lrInView++;
-            else                   noneInView++;
-        }
+        totalInView++;
+        if      (cls === 'HR') hrInView++;
+        else if (cls === 'MR') mrInView++;
+        else if (cls === 'LR') lrInView++;
     }
 
     // Update In-View KPIs with animated count
@@ -2311,12 +2327,12 @@ function updateViewportStats() {
     animateKpi(kpiMr,     mrInView);
     animateKpi(kpiLr,     lrInView);
 
-    // Update TOTAL (ALL) KPI card - persistent, immutable total!
+    // Update TOTAL (ALL) KPI — persistent island-wide total, never changes on pan/zoom
     const kpiTotal = document.getElementById('kpi-total');
     if (kpiTotal) {
         const hasFilter = !!(currentFilters.dis || currentFilters.d || currentFilters.r || currentFilters.cat);
         if (hasFilter) {
-            kpiTotal.innerHTML = globalFilteredTotal.toLocaleString() +
+            kpiTotal.innerHTML = _cachedGlobalTotals.total.toLocaleString() +
                 '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">filtered total</span>';
         } else {
             const tot = (summaryStats && summaryStats.total_mapped) ? summaryStats.total_mapped : localSearchIndex.length;
@@ -2325,23 +2341,23 @@ function updateViewportStats() {
         }
     }
 
-    // Update proportional risk bar
-    if (riskBarCont && globalFilteredTotal > 0) {
+    // Update proportional risk bar using global (not viewport) percentages
+    const gTotal = _cachedGlobalTotals.total;
+    if (riskBarCont && gTotal > 0) {
         riskBarCont.style.display = 'flex';
-        const pct = (n) => (n / globalFilteredTotal * 100).toFixed(1) + '%';
-        if (barHr)   barHr.style.width   = pct(globalHr);
-        if (barMr)   barMr.style.width   = pct(globalMr);
-        if (barLr)   barLr.style.width   = pct(globalLr);
-        if (barNone) barNone.style.width = pct(globalNone);
+        const pct = (n) => (n / gTotal * 100).toFixed(1) + '%';
+        if (barHr)   barHr.style.width   = pct(_cachedGlobalTotals.hr);
+        if (barMr)   barMr.style.width   = pct(_cachedGlobalTotals.mr);
+        if (barLr)   barLr.style.width   = pct(_cachedGlobalTotals.lr);
+        if (barNone) barNone.style.width = pct(_cachedGlobalTotals.none);
     }
 
-    // Populate district-wise table (persistent island-wide counts)
+    // Populate district-wise table from pre-built cache (zero scan cost)
     if (tbody) {
-        if (globalFilteredTotal === 0) {
+        if (gTotal === 0) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#475569;padding:12px 0;">No matching incidents</td></tr>';
         } else {
-            // Sort districts by HR count desc, then total desc
-            const districts = Object.entries(districtMap).sort((a, b) => {
+            const districts = Object.entries(_cachedDistrictMap).sort((a, b) => {
                 if (b[1].hr !== a[1].hr) return b[1].hr - a[1].hr;
                 return b[1].total - a[1].total;
             });
@@ -2358,18 +2374,17 @@ function updateViewportStats() {
                     <td style="font-size:0.72rem;color:#fbbf24;">${d.mr || '—'}</td>
                     <td style="font-size:0.72rem;color:#4ade80;">${d.lr || '—'}</td>
                 `;
-                // Set district name as textContent (XSS-safe)
                 tr.querySelector('td').textContent = name;
                 tbody.appendChild(tr);
             });
         }
     }
 
-    // Footer timestamp
+    // Footer
     if (footer) {
         const now = new Date();
         const fullTot = (summaryStats && summaryStats.total_mapped) ? summaryStats.total_mapped : localSearchIndex.length;
-        footer.textContent = `Updated ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')} · In view: ${totalInView.toLocaleString()} · Filtered: ${globalFilteredTotal.toLocaleString()} of ${fullTot.toLocaleString()}`;
+        footer.textContent = `Updated ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')} · In view: ${totalInView.toLocaleString()} of ${fullTot.toLocaleString()}`;
     }
 }
 
@@ -2615,6 +2630,9 @@ function applyAdvancedFilters() {
     currentFilters.r   = riskEl ? riskEl.value : '';
     currentFilters.d   = dsdEl  ? dsdEl.value : '';
     currentFilters.cat = natEl  ? natEl.value : '';
+    
+    // Invalidate the global cache whenever filters change so district table rebuilds
+    buildGlobalCache();
     
     // Mapbox GL filter syntax
     const filterArray = ['all'];
