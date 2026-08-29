@@ -2007,23 +2007,27 @@ function dismissToast() {
 // =============================================
 // EXECUTIVE SUMMARY DASHBOARD & LOCAL SEARCH LOGIC
 // =============================================
-// Lazy-load search index on first keystroke (saves ~786KB on every page load)
+// Lazy-load search index on first keystroke / dashboard load
 let _searchIndexLoading = false;
 async function loadSearchIndex() {
     if (localSearchIndex.length > 0 || _searchIndexLoading) return;
     _searchIndexLoading = true;
-    const cacheKey = 'search_index_' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v58');
     try {
-        // PERF-3: Try IndexedDB first (version-bound cache)
         let loaded = false;
+        const targetStamp = summaryStats ? summaryStats.updated_at : null;
+        const targetCount = summaryStats ? summaryStats.total_mapped : null;
+
+        // PERF-3: Check IndexedDB with automatic cloud-sync validation
         if (window.indexedDB) {
             try {
-                const cached = await idbGet(cacheKey);
+                const cached = await idbGet('search_index_data');
+                const cachedMeta = await idbGet('search_index_meta');
                 if (cached && Array.isArray(cached) && cached.length > 0) {
-                    // Check if cached size matches current summaryStats
-                    if (summaryStats && summaryStats.total_mapped && cached.length !== summaryStats.total_mapped) {
-                        console.warn("Cached index size mismatch, reloading freshly...");
-                        loaded = false;
+                    // Check if local cache matches live Cloudflare dataset
+                    if (targetCount && cached.length !== targetCount) {
+                        loaded = false; // New data uploaded to cloud, reload freshly
+                    } else if (targetStamp && cachedMeta && cachedMeta.updated_at !== targetStamp) {
+                        loaded = false; // Timestamp updated on cloud, reload freshly
                     } else {
                         localSearchIndex = cached;
                         loaded = true;
@@ -2032,13 +2036,18 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=` + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : Date.now());
-            const res = await fetch(url);
+            const stamp = targetStamp || Date.now();
+            const url = `${DATA_BASE_URL}/search_index.json?_t=${stamp}`;
+            const res = await fetch(url, { cache: 'no-cache' });
             if (res.ok) {
                 localSearchIndex = await res.json();
-                // Cache in IndexedDB for next session (non-blocking)
+                // Cache in IndexedDB with cloud metadata for next session
                 if (window.indexedDB) {
-                    idbSet(cacheKey, localSearchIndex).catch(() => {});
+                    idbSet('search_index_data', localSearchIndex).catch(() => {});
+                    idbSet('search_index_meta', {
+                        updated_at: targetStamp || Date.now(),
+                        total_mapped: localSearchIndex.length
+                    }).catch(() => {});
                 }
             }
         }
@@ -2157,12 +2166,13 @@ function queryGrid(west, east, south, north) {
 
 async function loadDashboardAndSearchData() {
     try {
-        const res = await fetch(`${DATA_BASE_URL}/summary.json?v=` + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : Date.now()));
+        // Fetch summary.json freshly (tiny <1KB payload) to discover any Cloudflare dataset updates
+        const res = await fetch(`${DATA_BASE_URL}/summary.json?_t=${Date.now()}`, { cache: 'no-store' });
         if (res.ok) {
             summaryStats = await res.json();
             populateDashboard(summaryStats);
         }
-        // Force load search index immediately so dashboard viewport stats work properly
+        // Force load search index immediately, checking for cloud-sync alignment
         await loadSearchIndex();
     } catch (e) {
         console.error("Error loading dashboard data:", e);
