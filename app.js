@@ -45,9 +45,14 @@ const map = new maplibregl.Map({
         sources: {
             'osm': {
                 type: 'raster',
-                tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'],
+                tiles: [
+                    'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+                ],
                 tileSize: 256,
-                attribution: '© OpenStreetMap contributors, © CARTO'
+                attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors',
+                maxzoom: 19
             }
             // Satellite, hillshade, and hybrid-labels will be loaded on-demand
         },
