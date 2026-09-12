@@ -1,5 +1,5 @@
 // ⚠️ DEPLOY-1: When bumping version, also update APP_VERSION in index.html (line 7) and style.css?v= in index.html
-const CACHE_NAME = 'landslide-map-v62';
+const CACHE_NAME = 'landslide-map-v63';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -18,7 +18,6 @@ self.addEventListener('install', (event) => {
     self.skipWaiting();
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
-            console.log('[Service Worker] Caching all: app shell and content');
             return cache.addAll(ASSETS_TO_CACHE);
         })
     );

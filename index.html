@@ -5,7 +5,7 @@
     <script>
         // Force aggressive cache purge for returning users (safe against mobile storage restriction loops)
         // ⚠️ DEPLOY-1: When bumping version, also update CACHE_NAME in sw.js and style.css?v= in index.html
-        const APP_VERSION = "v62";
+        const APP_VERSION = "v63";
         try {
             if (localStorage.getItem('lhmpVersion') !== APP_VERSION && !window.location.search.includes('update=')) {
                 localStorage.setItem('lhmpVersion', APP_VERSION);
@@ -22,7 +22,7 @@
         }
     </script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#8b5cf6">
@@ -39,14 +39,14 @@
     
     <!-- Preload Critical Resources -->
     <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" as="style" crossorigin>
-    <link rel="preload" href="style.css?v=62" as="style">
+    <link rel="preload" href="style.css?v=63" as="style">
     <link rel="preconnect" href="https://unpkg.com" crossorigin>
     <!-- Preload search index so it starts downloading before app.js requests it -->
-    <link rel="preload" href="https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/search_index.json?v=62" as="fetch" crossorigin>
+    <link rel="preload" href="https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/search_index.json?v=63" as="fetch" crossorigin>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" crossorigin />
-    <link href="style.css?v=62" rel="stylesheet" />
+    <link href="style.css?v=63" rel="stylesheet" />
 </head>
 
 <body>
@@ -69,7 +69,7 @@
         <div class="app-title-bar">
             <span class="app-title-icon">🏔️</span>
             <span class="app-title-text">Landslide Hazard Zonation Map</span>
-            <span class="app-title-badge">Sri Lanka • v62</span>
+            <span class="app-title-badge">Sri Lanka • v63</span>
         </div>
         <div class="search-box">
             <div class="search-input-wrapper">
@@ -134,8 +134,8 @@
                     <div class="kpi-title">👁 In View</div>
                     <div class="kpi-value" id="kpi-mapped">—</div>
                 </div>
-                <div class="kpi-card" style="border-color: rgba(239, 68, 68, 0.4);">
-                    <div class="kpi-title">🔴 High Risk</div>
+                <div class="kpi-card" style="border-color: rgba(239, 68, 68, 0.4);" title="Total High Risk Families / Households (P1+P2+P3)">
+                    <div class="kpi-title">🔴 High Risk Families</div>
                     <div class="kpi-value" id="kpi-hr" style="color: #f87171;">—</div>
                 </div>
                 <div class="kpi-card" style="border-color: rgba(234, 179, 8, 0.4);">
@@ -167,7 +167,7 @@
                     </thead>
                     <tbody id="district-tbody">
                         <tr>
-                            <td colspan="3" style="text-align: center; color: #94a3b8; padding: 12px 0;">Pan map to see incidents</td>
+                            <td colspan="5" style="text-align: center; color: #94a3b8; padding: 12px 0;">Pan map to see incidents</td>
                         </tr>
                     </tbody>
                 </table>
@@ -343,7 +343,7 @@
     <!-- Floating Action Buttons -->
     <div class="fab-container">
         <button id="locate-btn" class="fab-btn" title="Find My Location">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="8"></circle>
                 <line x1="12" y1="2" x2="12" y2="6"></line>
@@ -355,7 +355,7 @@
             <span class="fab-tooltip">Find Location</span>
         </button>
         <button id="tools-menu-btn" class="fab-btn" title="More Tools">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 6h16M4 12h16M4 18h16"></path>
             </svg>
@@ -427,9 +427,8 @@
 
     <!-- Compass Indicator (shows in 3D mode) -->
     <div id="compass-indicator" class="compass-indicator">
-        <div id="compass-needle"
-            style="width:48px; height:48px; background:rgba(15,23,42,0.9); border-radius:50%; border:2px solid rgba(139,92,246,0.6); display:flex; align-items:center; justify-content:center; box-shadow:0 4px 15px rgba(0,0,0,0.3); transition: transform 0.3s;">
-            <span style="font-size:1.5rem; transform-origin:center;">🧭</span>
+        <div id="compass-needle">
+            <span>🧭</span>
         </div>
         <div style="text-align:center; font-size:0.65rem; color:#94a3b8; margin-top:2px;">Tap to reset</div>
     </div>
@@ -555,7 +554,7 @@
     <!-- MapLibre GL from CDN for instant cache hits (fallback: local copy in sw.js) -->
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous"></script>
     <script src="pmtiles.js"></script>
-    <script src="app.js?v=62"></script>
+    <script src="app.js?v=63"></script>
 </body>
 
 </html>

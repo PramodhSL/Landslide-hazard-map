@@ -256,7 +256,7 @@
             backdrop-filter: blur(12px);
             border-radius: 0 0 16px 16px;
             padding: 1rem;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
             border: 1px solid rgba(139, 92, 246, 0.3);
             border-top: none;
             display: flex;
@@ -288,7 +288,8 @@
             background-size: 16px 16px;
             border: 1px solid rgba(148, 163, 184, 0.2);
             color: #e2e8f0;
-            padding: 8px 28px 8px 8px; /* Extra padding on right for arrow */
+            padding: 8px 28px 8px 8px;
+            /* Extra padding on right for arrow */
             border-radius: 8px;
             font-size: 0.8rem;
             font-family: inherit;
@@ -301,7 +302,7 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        
+
         .query-select option {
             background-color: #1e293b;
             color: #e2e8f0;
@@ -342,7 +343,8 @@
             z-index: 1500;
             min-width: 280px;
             max-width: 90vw;
-            max-height: calc(100vh - 12rem); /* Leave space for FABs at the bottom */
+            max-height: calc(100vh - 12rem);
+            /* Leave space for FABs at the bottom */
             overflow-y: auto;
         }
 
@@ -350,10 +352,12 @@
         .controls-panel::-webkit-scrollbar {
             width: 6px;
         }
+
         .controls-panel::-webkit-scrollbar-track {
             background: rgba(255, 255, 255, 0.05);
             border-radius: 4px;
         }
+
         .controls-panel::-webkit-scrollbar-thumb {
             background: rgba(139, 92, 246, 0.5);
             border-radius: 4px;
@@ -378,7 +382,7 @@
             inset: 0;
             border-radius: 18px;
             padding: 1px;
-            background: linear-gradient(135deg, rgba(139,92,246,0.5), rgba(6,182,212,0.2), rgba(139,92,246,0.5));
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.5), rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.5));
             -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
             -webkit-mask-composite: xor;
             mask-composite: exclude;
@@ -505,7 +509,7 @@
             padding-left: 2px;
         }
 
-        .layer-toggle:has(input:checked) + .opacity-control {
+        .layer-toggle:has(input:checked)+.opacity-control {
             display: flex;
         }
 
@@ -598,19 +602,19 @@
             right: 1.5rem;
             display: flex;
             flex-direction: column-reverse;
-            gap: 0.8rem;
+            gap: 0.6rem;
             z-index: 1000;
             pointer-events: none;
         }
 
         .fab-btn {
             pointer-events: auto;
-            width: 56px;
-            height: 56px;
+            width: 48px;
+            height: 48px;
             border-radius: 50%;
             border: none;
             color: white;
-            font-size: 1.5rem;
+            font-size: 1.3rem;
             cursor: pointer;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             display: flex;
@@ -618,6 +622,11 @@
             justify-content: center;
             transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             position: relative;
+        }
+
+        .fab-btn svg {
+            width: 22px;
+            height: 22px;
         }
 
         .fab-btn:hover {
@@ -651,14 +660,15 @@
         /* Tools Panel */
         .tools-panel {
             position: fixed;
-            bottom: 5.5rem; /* Above the FABs */
+            bottom: 5.5rem;
+            /* Above the FABs */
             right: 1.5rem;
             z-index: 1000;
             background: rgba(15, 23, 42, 0.95);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(139, 92, 246, 0.4);
             border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
             width: 250px;
             display: none;
             flex-direction: column;
@@ -672,8 +682,15 @@
         }
 
         @keyframes popIn {
-            from { opacity: 0; transform: scale(0.9) translateY(10px); }
-            to { opacity: 1; transform: scale(1) translateY(0); }
+            from {
+                opacity: 0;
+                transform: scale(0.9) translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
         }
 
         .tools-panel-header {
@@ -750,7 +767,7 @@
             border-radius: 8px;
             color: white;
             flex-shrink: 0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
         }
 
         /* Mobile specific bottom-sheet for Tools Panel */
@@ -767,9 +784,17 @@
                 animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
                 padding-bottom: env(safe-area-inset-bottom);
             }
+
             @keyframes slideUp {
-                from { transform: translateY(100%); opacity: 0; }
-                to { transform: translateY(0); opacity: 1; }
+                from {
+                    transform: translateY(100%);
+                    opacity: 0;
+                }
+
+                to {
+                    transform: translateY(0);
+                    opacity: 1;
+                }
             }
         }
 
@@ -834,9 +859,28 @@
             transition: all 0.3s ease;
         }
 
+        #compass-needle {
+            width: 44px;
+            height: 44px;
+            background: rgba(15, 23, 42, 0.9);
+            border-radius: 50%;
+            border: 2px solid rgba(139, 92, 246, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            transition: transform 0.3s;
+        }
+
+        #compass-needle span {
+            font-size: 1.35rem;
+            transform-origin: center;
+        }
+
         .legend {
             position: fixed;
-            top: 4.5rem; /* Moved down to avoid overlap with Map Controls */
+            top: 4.5rem;
+            /* Moved down to avoid overlap with Map Controls */
             right: 1rem;
             bottom: auto;
             max-width: 300px;
@@ -932,7 +976,8 @@
             border-radius: 8px;
             /* Slightly rounded */
             overflow: hidden;
-            display: flex; /* Make it horizontal */
+            display: flex;
+            /* Make it horizontal */
             flex-direction: row;
         }
 
@@ -1019,7 +1064,7 @@
             }
 
             #search-input {
-                font-size: 0.9rem;
+                font-size: 16px; /* Prevents iOS Safari auto-canvas zoom on focus */
             }
 
             #search-results {
@@ -1038,29 +1083,41 @@
                 font-size: 0.75rem;
             }
 
-            /* Mobile: Hide FABs when Controls Panel is expanded? 
-               Or move them. Let's move them to top-left under Search on mobile. */
-            /* Mobile FABs: Bottom Right, stacked upwards */
+            /* Mobile FABs: Bottom Right, stacked upwards with ergonomic touch size */
             .fab-container {
-                bottom: max(5rem, calc(3.5rem + env(safe-area-inset-bottom, 0px)));
+                bottom: max(4.5rem, calc(3rem + env(safe-area-inset-bottom, 0px)));
                 right: 0.75rem;
                 left: auto;
                 top: auto;
-                gap: 0.6rem;
+                gap: 0.5rem;
             }
 
             .compass-indicator {
                 top: auto;
-                bottom: max(16rem, calc(14rem + env(safe-area-inset-bottom, 0px)));
+                bottom: max(9.5rem, calc(8rem + env(safe-area-inset-bottom, 0px)));
                 left: 0.75rem;
                 right: auto;
             }
 
-            /* Larger FABs for easier touch on mobile */
+            #compass-needle {
+                width: 38px !important;
+                height: 38px !important;
+            }
+
+            #compass-needle span {
+                font-size: 1.15rem !important;
+            }
+
+            /* Compact, ergonomic FABs for mobile (replacing oversized 64px) */
             .fab-btn {
-                width: 64px;
-                height: 64px;
-                font-size: 1.7rem;
+                width: 46px;
+                height: 46px;
+                font-size: 1.2rem;
+            }
+
+            .fab-btn svg {
+                width: 20px;
+                height: 20px;
             }
 
             /* Ensure controls panel takes precedence */
@@ -1205,14 +1262,14 @@
             position: absolute;
             inset: 0;
             border-radius: 10px;
-            background: linear-gradient(135deg, rgba(139,92,246,0.0), rgba(6,182,212,0.0));
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.0), rgba(6, 182, 212, 0.0));
             transition: background 0.25s ease;
             pointer-events: none;
             z-index: 1;
         }
 
         .basemap-card:hover::before {
-            background: linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.1));
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(6, 182, 212, 0.1));
         }
 
         .basemap-card:hover {
@@ -1237,11 +1294,13 @@
             background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 40%, #94a3b8 100%);
             position: relative;
         }
+
         .basemap-thumbnail.street::after {
             content: '🛣️';
             position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%,-50%);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             font-size: 1.4rem;
             opacity: 0.6;
         }
@@ -1250,11 +1309,13 @@
             background: linear-gradient(135deg, #1e293b 0%, #0f766e 50%, #065f46 100%);
             position: relative;
         }
+
         .basemap-thumbnail.satellite::after {
             content: '🛰️';
             position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%,-50%);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             font-size: 1.4rem;
             opacity: 0.7;
         }
@@ -1289,12 +1350,26 @@
 
         @media (max-width: 480px) {
             .basemap-switcher {
-                grid-template-columns: 1fr;
-                gap: 0.5rem;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 0.4rem;
             }
 
             .basemap-thumbnail {
-                height: 50px;
+                height: 42px;
+            }
+
+            .basemap-label {
+                font-size: 0.68rem;
+            }
+
+            .fab-btn {
+                width: 44px;
+                height: 44px;
+            }
+
+            .fab-btn svg {
+                width: 19px;
+                height: 19px;
             }
         }
 
@@ -1338,428 +1413,487 @@
             font-size: 1.2rem;
         }
 
-/* ======================================= */
-/* PREMIUM UI POLISH APPENDMENTS           */
-/* ======================================= */
+        /* ======================================= */
+        /* PREMIUM UI POLISH APPENDMENTS           */
+        /* ======================================= */
 
-/* 1. Custom Dark Scrollbars */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-    background: rgba(139, 92, 246, 0.4);
-    border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.7); }
+        /* 1. Custom Dark Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
 
-/* 2. Tactile Toggle Switches */
-.slider:active:before { width: 26px; }
-input:checked + .slider:active:before { transform: translateX(18px); }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
 
-/* 3. Dropdown Indicator for Mobile Bottom Sheet */
-@media (max-width: 768px) {
-    .controls-panel::before {
-        content: "";
-        display: block;
-        width: 40px;
-        height: 5px;
-        background: rgba(139, 92, 246, 0.4);
-        border-radius: 3px;
-        margin: -4px auto 14px auto;
-    }
-    /* Safe-area for iPhone notch/Dynamic Island */
-    .search-container {
-        padding-top: env(safe-area-inset-top, 0px);
-    }
-    .app-title-bar {
-        padding-top: calc(0.55rem + env(safe-area-inset-top, 0px));
-    }
-}
+        ::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.4);
+            border-radius: 4px;
+        }
 
-/* 4. Animated Tooltips for FABs */
-.fab-tooltip {
-    transform: translateX(10px);
-    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.fab-btn:hover .fab-tooltip {
-    transform: translateX(0px);
-    opacity: 1;
-}
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(139, 92, 246, 0.7);
+        }
 
-/* 5. Premium Popups UI Polish */
-.maplibregl-popup-content {
-    background: rgba(15, 23, 42, 0.85) !important;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(139, 92, 246, 0.5) !important;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6) !important;
-}
-.maplibregl-popup-tip {
-    border-top-color: rgba(15, 23, 42, 0.85) !important;
-}
+        /* 2. Tactile Toggle Switches */
+        .slider:active:before {
+            width: 26px;
+        }
 
-/* 6. Executive Summary Dashboard Panel Styles */
-.dashboard-panel {
-    position: fixed;
-    top: auto;
-    bottom: 3.5rem; /* raised to clear zoom/scale controls at bottom-left */
-    left: 1rem;
-    background: rgba(15, 23, 42, 0.97);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-radius: 18px;
-    padding: 1.25rem;
-    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(139, 92, 246, 0.35);
-    z-index: 1500;
-    width: 330px;
-    max-height: 80vh;
-    display: flex;
-    flex-direction: column;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-sizing: border-box;
-}
+        input:checked+.slider:active:before {
+            transform: translateX(18px);
+        }
 
-.dashboard-panel.collapsed {
-    max-height: 46px;
-    padding: 0.7rem 1.25rem;
-    overflow: hidden;
-}
+        /* 3. Dropdown Indicator for Mobile Bottom Sheet */
+        @media (max-width: 768px) {
+            .controls-panel::before {
+                content: "";
+                display: block;
+                width: 40px;
+                height: 5px;
+                background: rgba(139, 92, 246, 0.4);
+                border-radius: 3px;
+                margin: -4px auto 14px auto;
+            }
 
-.dashboard-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: pointer;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-}
+            /* Safe-area for iPhone notch/Dynamic Island */
+            .search-container {
+                padding-top: env(safe-area-inset-top, 0px);
+            }
 
-.dashboard-header h3 {
-    color: #e2e8f0;
-    font-size: 1.05rem;
-    margin: 0;
-    font-weight: 700;
-    background: linear-gradient(135deg, #8b5cf6, #06b6d4);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
+            .app-title-bar {
+                padding-top: calc(0.55rem + env(safe-area-inset-top, 0px));
+            }
+        }
 
-.dashboard-toggle-btn {
-    background: none;
-    border: none;
-    color: #8b5cf6;
-    font-size: 1.2rem;
-    cursor: pointer;
-    padding: 0;
-    line-height: 1;
-    transition: transform 0.3s ease;
-}
+        /* 4. Animated Tooltips for FABs */
+        .fab-tooltip {
+            transform: translateX(10px);
+            transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
 
-.dashboard-panel.collapsed .dashboard-toggle-btn {
-    transform: rotate(180deg);
-}
+        .fab-btn:hover .fab-tooltip {
+            transform: translateX(0px);
+            opacity: 1;
+        }
 
-.dashboard-content {
-    margin-top: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    overflow: hidden;
-    flex-grow: 1;
-}
+        /* 5. Premium Popups UI Polish */
+        .maplibregl-popup-content {
+            background: rgba(15, 23, 42, 0.85) !important;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(139, 92, 246, 0.5) !important;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6) !important;
+        }
 
-.kpi-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-}
+        .maplibregl-popup-tip {
+            border-top-color: rgba(15, 23, 42, 0.85) !important;
+        }
 
-.kpi-card {
-    background: rgba(30, 41, 59, 0.5);
-    border: 1px solid rgba(139, 92, 246, 0.2);
-    border-radius: 12px;
-    padding: 0.75rem;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
+        /* 6. Executive Summary Dashboard Panel Styles */
+        .dashboard-panel {
+            position: fixed;
+            top: auto;
+            bottom: 3.5rem;
+            /* raised to clear zoom/scale controls at bottom-left */
+            left: 1rem;
+            background: rgba(15, 23, 42, 0.97);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 18px;
+            padding: 1.25rem;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(139, 92, 246, 0.35);
+            z-index: 1500;
+            width: 330px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-sizing: border-box;
+        }
 
-.kpi-title {
-    font-size: 0.7rem;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-weight: 600;
-}
+        .dashboard-panel.collapsed {
+            max-height: 46px;
+            padding: 0.7rem 1.25rem;
+            overflow: hidden;
+        }
 
-.kpi-value {
-    font-size: 1.35rem;
-    font-weight: 700;
-    color: #a78bfa;
-    margin-top: 0.25rem;
-}
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
 
-.district-table-wrapper {
-    max-height: 200px;
-    overflow-y: auto;
-    border: 1px solid rgba(148, 163, 184, 0.15);
-    border-radius: 8px;
-    background: rgba(30, 41, 59, 0.2);
-}
+        .dashboard-header h3 {
+            color: #e2e8f0;
+            font-size: 1.05rem;
+            margin: 0;
+            font-weight: 700;
+            background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
 
-.district-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.75rem;
-    color: #cbd5e1;
-}
+        .dashboard-toggle-btn {
+            background: none;
+            border: none;
+            color: #8b5cf6;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+            transition: transform 0.3s ease;
+        }
 
-.district-table th,
-.district-table td {
-    padding: 8px 10px;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-}
+        .dashboard-panel.collapsed .dashboard-toggle-btn {
+            transform: rotate(180deg);
+        }
 
-.district-table th {
-    background: rgba(15, 23, 42, 0.8);
-    position: sticky;
-    top: 0;
-    font-weight: 600;
-    color: #a78bfa;
-    text-transform: uppercase;
-    font-size: 0.65rem;
-    z-index: 2;
-    text-align: left;
-}
+        .dashboard-content {
+            margin-top: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            overflow: hidden;
+            flex-grow: 1;
+        }
 
-.district-table tr:hover {
-    background: rgba(139, 92, 246, 0.08);
-}
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
 
-@media (max-width: 768px) {
-    /* Hide desktop-specific panels on mobile to save screen space */
-    .dashboard-panel {
-        display: none !important;
-    }
-    
-    .advanced-query-panel {
-        display: none !important;
-    }
-}
+        .kpi-card {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            border-radius: 12px;
+            padding: 0.75rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .kpi-title {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        .kpi-value {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #a78bfa;
+            margin-top: 0.25rem;
+        }
+
+        .district-table-wrapper {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            border-radius: 8px;
+            background: rgba(30, 41, 59, 0.2);
+        }
+
+        .district-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+            color: #cbd5e1;
+        }
+
+        .district-table th,
+        .district-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .district-table th {
+            background: rgba(15, 23, 42, 0.8);
+            position: sticky;
+            top: 0;
+            font-weight: 600;
+            color: #a78bfa;
+            text-transform: uppercase;
+            font-size: 0.65rem;
+            z-index: 2;
+            text-align: left;
+        }
+
+        .district-table tr:hover {
+            background: rgba(139, 92, 246, 0.08);
+        }
+
+        @media (max-width: 768px) {
+
+            /* Hide desktop-specific panels on mobile to save screen space */
+            .dashboard-panel {
+                display: none !important;
+            }
+
+            .advanced-query-panel {
+                display: none !important;
+            }
+        }
 
 
-/* NOTE: .dashboard-panel is hidden on mobile (max-width:768px) via display:none !important
+        /* NOTE: .dashboard-panel is hidden on mobile (max-width:768px) via display:none !important
    The 480px override below is intentionally removed - it was dead code (panel is already hidden). */
 
 
-/* Custom Modern Popup Styles */
-.custom-modern-popup .maplibregl-popup-content {
-    background: rgba(15, 23, 42, 0.95) !important;
-    backdrop-filter: blur(12px) !important;
-    border: 1px solid rgba(139, 92, 246, 0.4) !important;
-    border-radius: 14px !important;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
-    color: #fff !important;
-    padding: 0 !important;
-}
+        /* Custom Modern Popup Styles */
+        .custom-modern-popup .maplibregl-popup-content {
+            background: rgba(15, 23, 42, 0.95) !important;
+            backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(139, 92, 246, 0.4) !important;
+            border-radius: 14px !important;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
+            color: #fff !important;
+            padding: 0 !important;
+            max-width: min(300px, calc(100vw - 32px)) !important;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
 
-.custom-modern-popup .maplibregl-popup-close-button {
-    color: #94a3b8 !important;
-    padding: 8px 12px !important;
-    font-size: 14px !important;
-    border-radius: 0 14px 0 0 !important;
-    outline: none !important;
-}
+        @media (max-width: 768px) and (max-height: 500px) {
+            .custom-modern-popup .maplibregl-popup-content {
+                max-height: 45vh;
+            }
+        }
 
-.custom-modern-popup .maplibregl-popup-close-button:hover {
-    background: rgba(255, 255, 255, 0.05) !important;
-    color: #fff !important;
-}
+        .custom-modern-popup .maplibregl-popup-close-button {
+            color: #94a3b8 !important;
+            padding: 8px 12px !important;
+            font-size: 14px !important;
+            border-radius: 0 14px 0 0 !important;
+            outline: none !important;
+        }
 
-.custom-modern-popup .maplibregl-popup-tip {
-    border-bottom-color: rgba(15, 23, 42, 0.95) !important;
-    border-top-color: rgba(15, 23, 42, 0.95) !important;
-    border-left-color: rgba(15, 23, 42, 0.95) !important;
-    border-right-color: rgba(15, 23, 42, 0.95) !important;
-}
+        .custom-modern-popup .maplibregl-popup-close-button:hover {
+            background: rgba(255, 255, 255, 0.05) !important;
+            color: #fff !important;
+        }
 
-.custom-popup-scroll::-webkit-scrollbar {
-    width: 4px;
-}
-.custom-popup-scroll::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 2px;
-}
-.custom-popup-scroll::-webkit-scrollbar-thumb {
-    background: rgba(139, 92, 246, 0.4);
-    border-radius: 2px;
-}
-.custom-popup-scroll::-webkit-scrollbar-thumb:hover {
-    background: rgba(139, 92, 246, 0.6);
-}
+        .custom-modern-popup .maplibregl-popup-tip {
+            border-bottom-color: rgba(15, 23, 42, 0.95) !important;
+            border-top-color: rgba(15, 23, 42, 0.95) !important;
+            border-left-color: rgba(15, 23, 42, 0.95) !important;
+            border-right-color: rgba(15, 23, 42, 0.95) !important;
+        }
 
-/* ======================================= */
-/* EXTENDED PREMIUM UI — Desktop + Mobile  */
-/* ======================================= */
+        .custom-popup-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
 
-/* FAB ripple effect on click */
-.fab-btn {
-    overflow: hidden;
-}
-.fab-btn::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.25);
-    opacity: 0;
-    transform: scale(0);
-    transition: transform 0.4s ease, opacity 0.4s ease;
-    pointer-events: none;
-}
-.fab-btn:active::after {
-    transform: scale(2);
-    opacity: 0;
-    transition: 0s;
-}
+        .custom-popup-scroll::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 2px;
+        }
 
-/* Mobile FAB touch tooltip */
-.fab-touch-label {
-    position: fixed;
-    right: 5rem;
-    background: rgba(15, 23, 42, 0.95);
-    color: #e2e8f0;
-    padding: 6px 12px;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    white-space: nowrap;
-    border: 1px solid rgba(139, 92, 246, 0.4);
-    pointer-events: none;
-    z-index: 9999;
-    opacity: 0;
-    transform: translateX(10px);
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-}
-.fab-touch-label.show {
-    opacity: 1;
-    transform: translateX(0);
-}
+        .custom-popup-scroll::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.4);
+            border-radius: 2px;
+        }
 
-/* Layer loading spinner inside toggle label */
-.layer-loading-spinner {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border: 2px solid rgba(139, 92, 246, 0.3);
-    border-top-color: #8b5cf6;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-    margin-left: 6px;
-    vertical-align: middle;
-    flex-shrink: 0;
-}
+        .custom-popup-scroll::-webkit-scrollbar-thumb:hover {
+            background: rgba(139, 92, 246, 0.6);
+        }
 
-/* Controls panel position is set in main block and mobile overrides above */
+        /* ======================================= */
+        /* EXTENDED PREMIUM UI — Desktop + Mobile  */
+        /* ======================================= */
 
-/* KPI card improvements */
-.kpi-card {
-    position: relative;
-    overflow: hidden;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.kpi-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(139, 92, 246, 0.2);
-}
-.kpi-card::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle at center, rgba(139,92,246,0.05) 0%, transparent 60%);
-    pointer-events: none;
-}
+        /* FAB ripple effect on click */
+        .fab-btn {
+            overflow: hidden;
+        }
 
-/* Improved search input focus glow */
-.search-box:focus-within {
-    box-shadow: 0 0 0 2px rgba(139,92,246,0.4), 0 15px 40px rgba(0,0,0,0.5);
-}
-.app-title-bar:has(+ .search-box:focus-within) {
-    border-color: rgba(139,92,246,0.5);
-}
+        .fab-btn::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.25);
+            opacity: 0;
+            transform: scale(0);
+            transition: transform 0.4s ease, opacity 0.4s ease;
+            pointer-events: none;
+        }
 
-/* Section header improvement on desktop */
-.layer-section.active .layer-header {
-    border-bottom: 1px solid rgba(139, 92, 246, 0.15);
-    margin-bottom: 4px;
-}
+        .fab-btn:active::after {
+            transform: scale(2);
+            opacity: 0;
+            transition: 0s;
+        }
 
-/* Enhanced scrollbar in controls panel */
-.controls-content::-webkit-scrollbar { width: 4px; }
-.controls-content::-webkit-scrollbar-track { background: transparent; }
-.controls-content::-webkit-scrollbar-thumb {
-    background: rgba(139, 92, 246, 0.35);
-    border-radius: 2px;
-}
+        /* Mobile FAB touch tooltip */
+        .fab-touch-label {
+            position: fixed;
+            right: auto;
+            max-width: calc(100vw - 60px);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            background: rgba(15, 23, 42, 0.95);
+            color: #e2e8f0;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            white-space: nowrap;
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0;
+            transform: translateX(10px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
 
-/* Mobile: app title bar adjustments for small screens */
-@media (max-width: 480px) {
-    .app-title-text {
-        font-size: 0.72rem;
-    }
-    .app-title-badge {
-        display: none;
-    }
-    .app-title-bar {
-        padding: 0.45rem 0.75rem;
-        padding-top: calc(0.45rem + env(safe-area-inset-top, 0px));
-    }
-}
+        .fab-touch-label.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
 
-/* Improved legend section title pulse on mobile to indicate expandability */
-@media (max-width: 768px) {
-    .legend.collapsed .legend-toggle::after {
-        content: ' •';
-        color: #8b5cf6;
-        animation: legendPulse 2s ease-in-out infinite;
-    }
-    @keyframes legendPulse {
-        0%, 100% { opacity: 0.4; }
-        50% { opacity: 1; }
-    }
-}
+        /* Layer loading spinner inside toggle label */
+        .layer-loading-spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(139, 92, 246, 0.3);
+            border-top-color: #8b5cf6;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-left: 6px;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
 
-/* Desktop dashboard panel glow on hover */
-@media (min-width: 769px) {
-    .dashboard-panel:hover {
-        box-shadow: 0 20px 50px rgba(0,0,0,0.6), 0 0 30px rgba(139,92,246,0.15);
-        transition: box-shadow 0.3s ease;
-    }
-}
+        /* Controls panel position is set in main block and mobile overrides above */
 
-/* Legend items: ensure no float, fully flex */
-#leg-item-base-hazard {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-#leg-item-base-hazard br {
-    display: none;
-}
+        /* KPI card improvements */
+        .kpi-card {
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
 
-/* Measurement result box improvements */
-#measure-result {
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-}
-#clear-measure:hover {
-    background: rgba(255,255,255,0.15) !important;
-}
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(139, 92, 246, 0.2);
+        }
 
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at center, rgba(139, 92, 246, 0.05) 0%, transparent 60%);
+            pointer-events: none;
+        }
+
+        /* Improved search input focus glow */
+        .search-box:focus-within {
+            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.4), 0 15px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .app-title-bar:has(+ .search-box:focus-within) {
+            border-color: rgba(139, 92, 246, 0.5);
+        }
+
+        /* Section header improvement on desktop */
+        .layer-section.active .layer-header {
+            border-bottom: 1px solid rgba(139, 92, 246, 0.15);
+            margin-bottom: 4px;
+        }
+
+        /* Enhanced scrollbar in controls panel */
+        .controls-content::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .controls-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .controls-content::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.35);
+            border-radius: 2px;
+        }
+
+        /* Mobile: app title bar adjustments for small screens */
+        @media (max-width: 480px) {
+            .app-title-text {
+                font-size: 0.72rem;
+            }
+
+            .app-title-badge {
+                display: none;
+            }
+
+            .app-title-bar {
+                padding: 0.45rem 0.75rem;
+                padding-top: calc(0.45rem + env(safe-area-inset-top, 0px));
+            }
+        }
+
+        /* Improved legend section title pulse on mobile to indicate expandability */
+        @media (max-width: 768px) {
+            .legend.collapsed .legend-toggle::after {
+                content: ' •';
+                color: #8b5cf6;
+                animation: legendPulse 2s ease-in-out infinite;
+            }
+
+            @keyframes legendPulse {
+
+                0%,
+                100% {
+                    opacity: 0.4;
+                }
+
+                50% {
+                    opacity: 1;
+                }
+            }
+        }
+
+        /* Desktop dashboard panel glow on hover */
+        @media (min-width: 769px) {
+            .dashboard-panel:hover {
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(139, 92, 246, 0.15);
+                transition: box-shadow 0.3s ease;
+            }
+        }
+
+        /* Legend items: ensure no float, fully flex */
+        #leg-item-base-hazard {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        #leg-item-base-hazard br {
+            display: none;
+        }
+
+        /* Measurement result box improvements */
+        #measure-result {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        #clear-measure:hover {
+            background: rgba(255, 255, 255, 0.15) !important;
+        }

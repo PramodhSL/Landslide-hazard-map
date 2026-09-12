@@ -17,6 +17,32 @@ let _cachedDistrictMap = {};
 let _cachedGlobalTotals = { total: 0, hr: 0, mr: 0, lr: 0, none: 0 };
 let _cacheBuiltForFilter = null; // tracks which filter state the cache was built for
 
+// DOM element cache — queried once at startup to avoid repeated getElementById on every pan/zoom
+// (DOM lookup is O(n) on the whole tree; caching gives ~13 fewer queries per moveend event)
+const DOM = {};
+document.addEventListener('DOMContentLoaded', () => {
+    // Dashboard KPI counters
+    DOM.kpiTotal    = document.getElementById('kpi-total');
+    DOM.kpiMapped   = document.getElementById('kpi-mapped');
+    DOM.kpiHr       = document.getElementById('kpi-hr');
+    DOM.kpiMr       = document.getElementById('kpi-mr');
+    DOM.kpiLr       = document.getElementById('kpi-lr');
+    // Dashboard table / footer
+    DOM.tbody       = document.getElementById('district-tbody');
+    DOM.footer      = document.getElementById('dashboard-footer');
+    // Risk bar segments
+    DOM.barHr       = document.getElementById('risk-bar-hr');
+    DOM.barMr       = document.getElementById('risk-bar-mr');
+    DOM.barLr       = document.getElementById('risk-bar-lr');
+    DOM.barNone     = document.getElementById('risk-bar-none');
+    DOM.riskBarCont = document.getElementById('risk-bar-container');
+    // Advanced query dropdowns
+    DOM.distSelect  = document.getElementById('query-district');
+    DOM.dsdSelect   = document.getElementById('query-dsd');
+    DOM.riskSelect  = document.getElementById('query-risk');
+    DOM.natSelect   = document.getElementById('query-nature');
+});
+
 
 let protocol = new pmtiles.Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
@@ -140,6 +166,27 @@ map.on('load', () => {
     map.addLayer({ id: 'z-index-4-zones', type: 'background', layout: { visibility: 'none' } }); // Red/Yellow
     map.addLayer({ id: 'z-index-5-overlays', type: 'background', layout: { visibility: 'none' } }); // Contours, Satellite
     map.addLayer({ id: 'z-index-6-top', type: 'background', layout: { visibility: 'none' } }); // Inspection
+
+    // IMP 7 FIX: Double-tap/dblclick finishes measurement without adding a phantom extra point
+    map.on('dblclick', (e) => {
+        if (!isMeasuring) return;
+        e.preventDefault();
+        // The single-click that fired just before dblclick already added an extra point — remove it
+        if (measurePoints.length > 1) {
+            measurePoints.pop();
+            const phantom = measureMarkers.pop();
+            if (phantom) phantom.remove();
+            // Redraw line without phantom point
+            const coords = measurePoints.map(p => [p.lng, p.lat]);
+            if (map.getSource('measure-line')) {
+                map.getSource('measure-line').setData({
+                    type: 'Feature', properties: {},
+                    geometry: { type: 'LineString', coordinates: coords }
+                });
+            }
+        }
+        stopMeasuring();
+    });
 
     // Load 50k immediately (Core Map)
     map.addLayer({
@@ -276,6 +323,7 @@ map.on('load', () => {
             'layout': { 'visibility': 'visible' }
         }, 'z-index-6-top'); // Top shelf
         // Click & cursor handlers are managed by the unified canvas click listener
+        attachLayerHover('inspection_points'); // IMP 5 FIX: attach hover immediately after layer is added
     };
 
     // 2. TOTAL IMPACT ZONE (TIZ) — 1:10,000
@@ -308,6 +356,7 @@ map.on('load', () => {
             'layout': { 'visibility': 'visible' }
         }, 'z-index-4-zones');
         // Click & cursor handlers are managed by the unified canvas click listener
+        attachLayerHover('tiz_zones_fill'); // IMP 5 FIX
     };
 
     // 2b. TOTAL IMPACT ZONE (TIZ) — 1:50,000
@@ -339,6 +388,7 @@ map.on('load', () => {
             'layout': { 'visibility': 'visible' }
         }, 'z-index-4-zones');
         // Click & cursor handlers are managed by the unified canvas click listener
+        attachLayerHover('tiz_50k_fill'); // IMP 5 FIX
     };
 
     // ARG Rain Gauges & Thiessen Polygons
@@ -393,6 +443,7 @@ map.on('load', () => {
                 'visibility': 'visible'
             }
         }, 'z-index-6-top');
+        attachLayerHover('arg_locations_points'); // IMP 5 FIX
     };
 
     // 4. CONTOURS & SATELLITE LAYERS
@@ -477,6 +528,8 @@ map.on('load', () => {
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-5-overlays');
+        attachLayerHover('satellite_polygons_fill'); // IMP 5 FIX
+        attachLayerHover('satellite_points'); // IMP 5 FIX
     };
 
 
@@ -502,10 +555,11 @@ map.on('load', () => {
 
         if (candidateLayers.length === 0) return;
 
-        // 24x24 px bounding box around click point for easy target hit on desktop & touch
+        // BUG 7 FIX: Larger hit bbox on mobile (±20px) for ergonomic touch accuracy
+        const hitRadius = window.innerWidth <= 768 ? 20 : 12;
         const bbox = [
-            [e.point.x - 12, e.point.y - 12],
-            [e.point.x + 12, e.point.y + 12]
+            [e.point.x - hitRadius, e.point.y - hitRadius],
+            [e.point.x + hitRadius, e.point.y + hitRadius]
         ];
         const features = map.queryRenderedFeatures(bbox, { layers: candidateLayers });
 
@@ -515,7 +569,7 @@ map.on('load', () => {
         const selectedFeature = features.find(f => f.layer && f.layer.id === 'inspection_points') ||
                                 features.find(f => f.layer && f.layer.id === 'satellite_points') ||
                                 features.find(f => f.layer && f.layer.id === 'arg_locations_points') ||
-                                features.find(f => f.layer && f.layer.id === 'satellite_polygons') ||
+                                features.find(f => f.layer && (f.layer.id === 'satellite_polygons_fill' || f.layer.id === 'satellite_polygons_line')) ||
                                 features.find(f => f.layer && f.layer.id === 'tiz_zones_fill') ||
                                 features.find(f => f.layer && f.layer.id === 'tiz_50k_fill') ||
                                 features.find(f => f.layer && f.layer.id === 'hazard_10k_fill') ||
@@ -534,13 +588,13 @@ map.on('load', () => {
         map.on('mouseleave', layerId, () => { if (map.getLayer(layerId)) map.getCanvas().style.cursor = ''; });
     }
 
-    ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons', 'hazard_10k_fill', 'hazard_50k_fill', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
+    ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons_fill', 'satellite_polygons_line', 'hazard_10k_fill', 'hazard_50k_fill', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
         if (map.getLayer(layerId)) attachLayerHover(layerId);
     });
 
     // Check for newly added layers on style data changes
     map.on('styledata', () => {
-        ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons', 'hazard_10k_fill', 'hazard_50k_fill', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
+        ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons_fill', 'satellite_polygons_line', 'hazard_10k_fill', 'hazard_50k_fill', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
             if (map.getLayer(layerId)) attachLayerHover(layerId);
         });
     });
@@ -572,6 +626,14 @@ setTimeout(() => {
         showToast('Network slow, but map is usable.', 'info');
     }
 }, 10000);
+
+// BUG 2 FIX: Stop GPS watch when user navigates away to prevent battery drain
+window.addEventListener('beforeunload', () => {
+    if (window.watchId !== null && window.watchId !== undefined) {
+        navigator.geolocation.clearWatch(window.watchId);
+        window.watchId = null;
+    }
+});
 
 function getPropVal(props, targetKeys) {
     if (!props) return '';
@@ -689,6 +751,21 @@ function showPopupForFeature(feature, coordinates) {
                     <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid ${badgeColor}; color: ${badgeColor}; background: ${badgeBg}; white-space: nowrap;">${riskLevel}</span>
                 </div>
                 <div style="font-size: 0.8rem; color: #e2e8f0;"><b>Total Impact Zone (TIZ)</b></div>
+            </div>
+        `;
+    } else if (layerId === 'satellite_polygons_fill' || layerId === 'satellite_polygons_line' || layerId === 'satellite_points') {
+        const featType = props.type === 'incident_point' ? 'Incident Point' : 'Landslide Polygon';
+        const name = props.Name || props.name || props.ID || 'Satellite Detected Landslide';
+        content = `
+            <div style="padding: 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 220px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; padding-right: 20px;">
+                    <span style="font-weight: 700; color: #fff; font-size: 0.85rem;">🛰️ ${name}</span>
+                    <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid #f97316; color: #f97316; background: rgba(249, 115, 22, 0.15); white-space: nowrap;">${featType}</span>
+                </div>
+                <div style="font-size: 0.75rem; color: #cbd5e1; line-height: 1.5;">
+                    <div><b>Source:</b> Satellite Imagery Analysis</div>
+                    <div><b>Division:</b> Human Settlement & Planning</div>
+                </div>
             </div>
         `;
     } else {
@@ -1519,11 +1596,7 @@ installBtn.addEventListener('click', (e) => {
     deferredPrompt.prompt();
     // Wait for the user to respond to the prompt
     deferredPrompt.userChoice.then((choiceResult) => {
-        if (choiceResult.outcome === 'accepted') {
-            console.log('User accepted the A2HS prompt');
-        } else {
-            console.log('User dismissed the A2HS prompt');
-        }
+        // No-op — outcome is logged only for debugging; remove console.log in production
         deferredPrompt = null;
     });
 });
@@ -1892,11 +1965,9 @@ map.on('pitchend', () => {
 // Check if service worker is supported
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
-        .then(registration => {
-            console.log('ServiceWorker registration successful');
-        })
+        .then(() => { /* Service Worker registered */ })
         .catch(err => {
-            console.log('ServiceWorker registration failed: ', err);
+            console.error('ServiceWorker registration failed:', err);
         });
 
     // Notify user (not force-reload) when new service worker takes control
@@ -2036,9 +2107,8 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const stamp = targetStamp || Date.now();
-            const url = `${DATA_BASE_URL}/search_index.json?_t=${stamp}`;
-            const res = await fetch(url, { cache: 'no-cache' });
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v63'}`;
+            const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
                 // Cache in IndexedDB with cloud metadata for next session
@@ -2171,30 +2241,40 @@ async function loadDashboardAndSearchData() {
         if (res.ok) {
             summaryStats = await res.json();
             populateDashboard(summaryStats);
+            // IMP 10 FIX: Persist summary to IndexedDB so dashboard works offline on next visit
+            if (window.indexedDB) idbSet('summary_stats', summaryStats).catch(() => {});
+        } else {
+            throw new Error('summary.json fetch failed');
         }
-        // Force load search index immediately, checking for cloud-sync alignment
-        await loadSearchIndex();
     } catch (e) {
-        console.error("Error loading dashboard data:", e);
+        console.warn('summary.json fetch failed, trying offline cache:', e);
+        // IMP 10 FIX: Fall back to cached summary if network is unavailable
+        if (window.indexedDB) {
+            try {
+                const cached = await idbGet('summary_stats');
+                if (cached) { summaryStats = cached; populateDashboard(summaryStats); }
+            } catch (_) { /* IndexedDB unavailable */ }
+        }
     }
+    // Force load search index immediately, checking for cloud-sync alignment
+    await loadSearchIndex();
 }
 
 function populateDashboard(data) {
     // Populate global KPIs from summary.json (used before search_index loads)
-    const kpiTotal   = document.getElementById('kpi-total');
-    const kpiMapped  = document.getElementById('kpi-mapped');
-    const kpiHr      = document.getElementById('kpi-hr');
-    const kpiMr      = document.getElementById('kpi-mr');
-    const kpiLr      = document.getElementById('kpi-lr');
+    // Use cached DOM refs where available; fall back to getElementById for early calls before DOMContentLoaded completes
+    const kpiTotal   = DOM.kpiTotal  || document.getElementById('kpi-total');
+    const kpiMapped  = DOM.kpiMapped || document.getElementById('kpi-mapped');
+    const kpiHr      = DOM.kpiHr     || document.getElementById('kpi-hr');
+    const tbody      = DOM.tbody     || document.getElementById('district-tbody');
+    const footer     = DOM.footer    || document.getElementById('dashboard-footer');
     // Set the immutable total count from pre-built summary
     if (kpiTotal)  kpiTotal.innerHTML  = `${data.total_mapped.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
     if (kpiHr)     kpiHr.innerHTML     = `${data.total_hr.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
     if (kpiMapped) kpiMapped.innerHTML = '—'; // will be updated by viewport stats
-    const tbody = document.getElementById('district-tbody');
     if (tbody) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#475569;padding:12px 0;">Pan or zoom map to see incidents</td></tr>';
     }
-    const footer = document.getElementById('dashboard-footer');
     if (footer) footer.textContent = `Dataset: ${data.total_mapped.toLocaleString()} inspection records`;
 }
 
@@ -2282,22 +2362,23 @@ function animateKpi(el, newVal) {
 }
 
 function updateViewportStats() {
-    const kpiMapped  = document.getElementById('kpi-mapped');
-    const kpiHr      = document.getElementById('kpi-hr');
-    const kpiMr      = document.getElementById('kpi-mr');
-    const kpiLr      = document.getElementById('kpi-lr');
-    const tbody       = document.getElementById('district-tbody');
-    const footer      = document.getElementById('dashboard-footer');
-    const barHr       = document.getElementById('risk-bar-hr');
-    const barMr       = document.getElementById('risk-bar-mr');
-    const barLr       = document.getElementById('risk-bar-lr');
-    const barNone     = document.getElementById('risk-bar-none');
-    const riskBarCont = document.getElementById('risk-bar-container');
+    // Use pre-cached DOM refs (set once at DOMContentLoaded) — avoids 13 tree traversals per moveend
+    const kpiMapped  = DOM.kpiMapped;
+    const kpiHr      = DOM.kpiHr;
+    const kpiMr      = DOM.kpiMr;
+    const kpiLr      = DOM.kpiLr;
+    const tbody       = DOM.tbody;
+    const footer      = DOM.footer;
+    const barHr       = DOM.barHr;
+    const barMr       = DOM.barMr;
+    const barLr       = DOM.barLr;
+    const barNone     = DOM.barNone;
+    const riskBarCont = DOM.riskBarCont;
 
     // Fallback to global summary if search index not loaded yet
     if (!localSearchIndex || localSearchIndex.length === 0) {
         if (summaryStats) {
-            const kpiTotal = document.getElementById('kpi-total');
+            const kpiTotal = DOM.kpiTotal;
             if (kpiTotal) kpiTotal.innerHTML = summaryStats.total_mapped.toLocaleString() +
                 '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>';
             if (kpiHr) kpiHr.innerHTML = summaryStats.total_hr.toLocaleString() +
@@ -2343,7 +2424,7 @@ function updateViewportStats() {
     animateKpi(kpiLr,     lrInView);
 
     // Update TOTAL (ALL) KPI — persistent island-wide total, never changes on pan/zoom
-    const kpiTotal = document.getElementById('kpi-total');
+    const kpiTotal = DOM.kpiTotal;
     if (kpiTotal) {
         const hasFilter = !!(currentFilters.dis || currentFilters.d || currentFilters.r || currentFilters.cat);
         if (hasFilter) {
@@ -2374,7 +2455,8 @@ function updateViewportStats() {
         } else {
             const districts = Object.entries(_cachedDistrictMap).sort((a, b) => {
                 if (b[1].hr !== a[1].hr) return b[1].hr - a[1].hr;
-                return b[1].total - a[1].total;
+                if (b[1].total !== a[1].total) return b[1].total - a[1].total;
+                return a[0].localeCompare(b[0]); // IMP 4 FIX: alphabetical tiebreaker for stable sort
             });
             tbody.innerHTML = '';
             districts.forEach(([name, d]) => {
@@ -2382,14 +2464,15 @@ function updateViewportStats() {
                 tr.style.cursor = 'pointer';
                 tr.title = `Click to fly to ${name} District`;
                 tr.addEventListener('click', () => flyToDistrict(name));
+                // BUG 1 FIX: inject name directly in template — no fragile post-hoc querySelector needed
+                const safeName = name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 tr.innerHTML = `
-                    <td style="font-size:0.72rem;color:#e2e8f0;font-weight:500;"></td>
+                    <td style="font-size:0.72rem;color:#e2e8f0;font-weight:500;">${safeName}</td>
                     <td style="font-size:0.72rem;color:#a78bfa;font-weight:600;">${d.total}</td>
                     <td style="font-size:0.72rem;color:#f87171;">${d.hr || '—'}</td>
                     <td style="font-size:0.72rem;color:#fbbf24;">${d.mr || '—'}</td>
                     <td style="font-size:0.72rem;color:#4ade80;">${d.lr || '—'}</td>
                 `;
-                tr.querySelector('td').textContent = name;
                 tbody.appendChild(tr);
             });
         }
@@ -2440,6 +2523,7 @@ map.on('moveend', () => {
             const rect = btn.getBoundingClientRect();
             tooltip.textContent = label;
             tooltip.style.top = (rect.top + rect.height / 2 - 14) + 'px';
+            tooltip.style.right = (window.innerWidth - rect.left + 8) + 'px';
             tooltip.classList.add('show');
 
             clearTimeout(hideTimer);
@@ -2472,6 +2556,33 @@ function cleanName(str) {
     return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
+function cleanDsdName(str) {
+    if (!str) return '';
+    let s = str.trim().replace(/^[\s\.\-\,\:\;\(\)]+|[\s\.\-\,\:\;\(\)]+$/g, '');
+    s = s.replace(/[\s\-_–\.]*ප[\u0dca\u200d]*[ර්‍ර][\u0dcf\u0dca]*[\.\s]*ලේ[\.\s]*ක[ොෝ][\.\s]*$/g, '');
+    s = s.replace(/[\s\-_–\.]*ප[\u0dca\u200d]*[ර්‍ර][\u0dcf\u0dca]*දේශීය\s*ලේකම්\s*(කොට්ඨාසය|කාර්යාලය)?/g, '');
+    s = s.replace(/\s*(ds\s*division|dsd)$/gi, '');
+    s = s.replace(/[\u200B-\u200D\uFEFF]/g, '');
+    s = s.replace(/\s*[\-–—]\s*/g, ' - ');
+    s = s.replace(/\s+/g, ' ').trim();
+    
+    const replacements = {
+        'ගඟඉහළ කෝරලේ': 'ගඟ ඉහළ කෝරලේ',
+        'ගඟඉහළකෝරලේ': 'ගඟ ඉහළ කෝරලේ',
+        'ගඟවට කෝරලේ': 'ගඟ වට කෝරලේ',
+        'ගඟවටකෝරලේ': 'ගඟ වට කෝරලේ',
+        'ගඟවටකෝරළේ': 'ගඟ වට කෝරලේ',
+        'උඩපලාත': 'උඩපළාත',
+        'දොලුව': 'දොළුව',
+        'මිණිපෙ': 'මිණිපේ',
+        'මිනිපේ': 'මිණිපේ',
+        'පුජාපිටිය': 'පූජාපිටිය',
+        'කුන්ඩසාලේ': 'කුණ්ඩසාලේ',
+        'පස්බාගේකෝරලේ': 'පස්බාගේ කෝරලේ'
+    };
+    return replacements[s] || s;
+}
+
 // Data structures to hold hierarchy
 let districtToDSDs = {};
 let districtToGNDs = {};
@@ -2487,7 +2598,7 @@ function initQueryDropdowns() {
     // Build hierarchy
     localSearchIndex.forEach(item => {
         let dist = item.dis && item.dis !== 'nan' && item.dis !== 'Unknown' ? cleanName(item.dis) : '';
-        let dsd = item.d && item.d !== 'nan' && item.d.trim() !== '' ? cleanName(item.d) : '';
+        let dsd = item.d && item.d !== 'nan' && item.d.trim() !== '' ? cleanDsdName(item.d) : '';
         
         if (dist) {
             allDistricts.add(dist);
@@ -2533,8 +2644,8 @@ function buildOptions(set, selectEl) {
 }
 
 function updateDropdownStates() {
-    const distSelect = document.getElementById('query-district');
-    const dsdSelect = document.getElementById('query-dsd');
+    const distSelect = DOM.distSelect || document.getElementById('query-district');
+    const dsdSelect  = DOM.dsdSelect  || document.getElementById('query-dsd');
     if (!distSelect || !dsdSelect) return;
     
     const selectedDist = distSelect.value;
@@ -2546,22 +2657,20 @@ function updateDropdownStates() {
         dsdSelect.innerHTML = dsdSelect.options[0].outerHTML;
     } else {
         dsdSelect.disabled = false;
-        // Rebuild DSD based on District
+        // BUG 3 FIX: Always rebuild DSD options when district is set — stale check was unreliable
         const validDSDs = districtToDSDs[selectedDist] || new Set();
-        if (dsdSelect.options.length <= 1 || !Array.from(validDSDs).includes(dsdSelect.options[1]?.value)) {
-            buildOptions(validDSDs, dsdSelect);
-        }
+        buildOptions(validDSDs, dsdSelect);
     }
     
     dsdSelect.style.opacity = dsdSelect.disabled ? '0.5' : '1';
-    dsdSelect.style.cursor = dsdSelect.disabled ? 'not-allowed' : 'pointer';
+    dsdSelect.style.cursor  = dsdSelect.disabled ? 'not-allowed' : 'pointer';
 }
 
 function resetAllFilters() {
-    if (document.getElementById('query-district')) document.getElementById('query-district').value = '';
-    if (document.getElementById('query-risk')) document.getElementById('query-risk').value = '';
-    if (document.getElementById('query-dsd')) document.getElementById('query-dsd').value = '';
-    if (document.getElementById('query-nature')) document.getElementById('query-nature').value = '';
+    if (DOM.distSelect) DOM.distSelect.value = '';
+    if (DOM.riskSelect) DOM.riskSelect.value = '';
+    if (DOM.dsdSelect)  DOM.dsdSelect.value  = '';
+    if (DOM.natSelect)  DOM.natSelect.value  = '';
     
     updateDropdownStates();
     applyAdvancedFilters();
@@ -2623,7 +2732,8 @@ function zoomToFilteredBounds() {
 function handleFilterChange(e) {
     const targetId = e.target.id;
     if (targetId === 'query-district') {
-        if (document.getElementById('query-dsd')) document.getElementById('query-dsd').value = '';
+        // Clear DSD selection when district changes
+        if (DOM.dsdSelect) DOM.dsdSelect.value = '';
     }
     
     updateDropdownStates();
@@ -2636,10 +2746,11 @@ function populateQueryDropdowns() {
 }
 
 function applyAdvancedFilters() {
-    const distEl = document.getElementById('query-district');
-    const riskEl = document.getElementById('query-risk');
-    const dsdEl  = document.getElementById('query-dsd');
-    const natEl  = document.getElementById('query-nature');
+    // Use cached dropdown refs
+    const distEl = DOM.distSelect || document.getElementById('query-district');
+    const riskEl = DOM.riskSelect || document.getElementById('query-risk');
+    const dsdEl  = DOM.dsdSelect  || document.getElementById('query-dsd');
+    const natEl  = DOM.natSelect  || document.getElementById('query-nature');
 
     currentFilters.dis = distEl ? distEl.value : '';
     currentFilters.r   = riskEl ? riskEl.value : '';
@@ -2665,17 +2776,27 @@ function applyAdvancedFilters() {
                 ['in', 'HR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
                 ['in', 'HR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
                 ['in', 'P1', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
-                ['in', 'HIGH', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
+                ['in', 'P1', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                ['in', 'P2', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                ['in', 'P2', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                ['in', 'P3', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                ['in', 'P3', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                ['in', 'HIGH', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                ['in', 'HIGH', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]]
             ]);
         } else if (currentFilters.r === 'MR') {
             filterArray.push(['any', 
                 ['in', 'MR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
-                ['in', 'MEDIUM', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
+                ['in', 'MR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                ['in', 'MEDIUM', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                ['in', 'MEDIUM', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]]
             ]);
         } else if (currentFilters.r === 'LR') {
             filterArray.push(['any', 
                 ['in', 'LR', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
-                ['in', 'LOW', ['upcase', ['coalesce', ['get', 'Risk level'], '']]]
+                ['in', 'LR', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]],
+                ['in', 'LOW', ['upcase', ['coalesce', ['get', 'Risk level'], '']]],
+                ['in', 'LOW', ['upcase', ['coalesce', ['get', 'HR (Priority level)'], '']]]
             ]);
         }
     }
@@ -2748,7 +2869,7 @@ function applyAdvancedFilters() {
         { toggleId: 'layer-arg-thiessen',  loaderFn: () => window.loadARGLayers && window.loadARGLayers(),       layerId: 'arg_thiessen_fill' },
         { toggleId: 'layer-tiz',           loaderFn: () => window.loadTizzones && window.loadTizzones(),         layerId: 'tiz_zones_fill' },
         { toggleId: 'layer-tiz-50k',       loaderFn: () => window.loadTizzones50k && window.loadTizzones50k(),  layerId: 'tiz_50k_fill' },
-        { toggleId: 'layer-satellite-ls',  loaderFn: () => window.loadSatelliteLs && window.loadSatelliteLs(),  layerId: 'satellite_polygons' },
+        { toggleId: 'layer-satellite-ls',  loaderFn: () => window.loadSatelliteLs && window.loadSatelliteLs(),  layerId: 'satellite_polygons_fill' },
         { toggleId: 'layer-contours',      loaderFn: () => window.loadContours && window.loadContours(),         layerId: 'contours_line' }
     ];
 
