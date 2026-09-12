@@ -5,7 +5,7 @@
     <script>
         // Force aggressive cache purge for returning users (safe against mobile storage restriction loops)
         // ⚠️ DEPLOY-1: When bumping version, also update CACHE_NAME in sw.js and style.css?v= in index.html
-        const APP_VERSION = "v63";
+        const APP_VERSION = "v64";
         try {
             if (localStorage.getItem('lhmpVersion') !== APP_VERSION && !window.location.search.includes('update=')) {
                 localStorage.setItem('lhmpVersion', APP_VERSION);
@@ -39,14 +39,16 @@
     
     <!-- Preload Critical Resources -->
     <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" as="style" crossorigin>
-    <link rel="preload" href="style.css?v=63" as="style">
+    <link rel="preload" href="style.css?v=64" as="style">
     <link rel="preconnect" href="https://unpkg.com" crossorigin>
     <!-- Preload search index so it starts downloading before app.js requests it -->
-    <link rel="preload" href="https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/search_index.json?v=63" as="fetch" crossorigin>
+    <link rel="preload" href="https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/search_index.json?v=64" as="fetch" crossorigin>
 
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- L2 FIX: Async Google Fonts load — no longer render-blocking -->
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" crossorigin />
-    <link href="style.css?v=63" rel="stylesheet" />
+    <link href="style.css?v=64" rel="stylesheet" />
 </head>
 
 <body>
@@ -62,118 +64,141 @@
     <!-- Toast Container -->
     <div id="toast-container" class="toast-container"></div>
 
+    <!-- F8: Offline Mode Indicator -->
+    <div id="offline-indicator">📴 Offline</div>
+
     <div id="map"></div>
 
-    <!-- Search Box -->
-    <div class="search-container">
-        <div class="app-title-bar">
-            <span class="app-title-icon">🏔️</span>
-            <span class="app-title-text">Landslide Hazard Zonation Map</span>
-            <span class="app-title-badge">Sri Lanka • v63</span>
+    <!-- Left Dock Container: Positions Search, Filters, and Dashboard in a coordinated, non-overlapping column -->
+    <div class="left-dock">
+        <!-- Search Box -->
+        <div class="search-container">
+            <div class="app-title-bar">
+                <span class="app-title-icon">🏔️</span>
+                <span class="app-title-text">Landslide Hazard Zonation Map</span>
+                <span class="app-title-badge">Sri Lanka • v64</span>
+            </div>
+            <div class="search-box">
+                <div class="search-input-wrapper">
+                    <span class="search-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                    </span>
+                    <input type="text" id="search-input" placeholder="Search location in Sri Lanka..." autocomplete="off">
+                    <button id="clear-search">×</button>
+                </div>
+                <div id="search-results"></div>
+            </div>
+            
+            <!-- Advanced Query Panel (Initially Hidden) -->
+            <div id="advanced-query-panel" class="advanced-query-panel" style="display: none;">
+                <div class="query-header" style="justify-content: space-between;">
+                    <span>🔍 Filter Investigations</span>
+                    <button id="close-query-btn" style="background: none; border: none; color: #94a3b8; font-size: 1.2rem; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+                </div>
+                <div class="query-filters">
+                    <select id="query-district" class="query-select">
+                        <option value="">All Districts</option>
+                    </select>
+                    <select id="query-risk" class="query-select">
+                        <option value="">All Risk Levels</option>
+                        <option value="HR">High Risk</option>
+                        <option value="MR">Medium Risk</option>
+                        <option value="LR">Low Risk</option>
+                    </select>
+                    <select id="query-dsd" class="query-select">
+                        <option value="">All DSDs</option>
+                    </select>
+                    <select id="query-nature" class="query-select">
+                        <option value="">All Disaster Types</option>
+                        <option value="Landslide">Landslide / නායයෑම්</option>
+                        <option value="Cutting Failure">Cutting Failure / කණ්ඩි අස්ථාපර</option>
+                        <option value="Slope Failure">Slope Failure / බැවුම් අස්ථාපර</option>
+                        <option value="Rock Fall">Rock Fall / ගල් පෙරලීම්</option>
+                        <option value="Subsidence">Sinking / Subsidence (ගිලා බැසීම්)</option>
+                        <option value="Other">Other / වෙනත්</option>
+                    </select>
+                </div>
+                <button id="reset-filters" class="query-reset-btn">Reset Filters</button>
+            </div>
         </div>
-        <div class="search-box">
-            <div class="search-input-wrapper">
-                <span class="search-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="11" cy="11" r="8"></circle>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                    </svg>
-                </span>
-                <input type="text" id="search-input" placeholder="Search location in Sri Lanka..." autocomplete="off">
-                <button id="clear-search">×</button>
+        <!-- Executive Summary Dashboard -->
+        <div class="dashboard-panel" id="dashboard-panel" style="display: none;">
+            <div class="dashboard-header" id="dashboard-toggle">
+                <h3>📊 Executive Summary</h3>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button id="toggle-filter-btn" class="dashboard-filter-btn" title="Show or hide filters">🔍 Filter</button>
+                    <button class="dashboard-toggle-btn">▼</button>
+                </div>
             </div>
-            <div id="search-results"></div>
-        </div>
-        
-        <!-- Advanced Query Panel (Initially Hidden) -->
-        <div id="advanced-query-panel" class="advanced-query-panel" style="display: none;">
-            <div class="query-header" style="justify-content: space-between;">
-                <span>🔍 Filter Investigations</span>
-                <button id="close-query-btn" style="background: none; border: none; color: #94a3b8; font-size: 1.2rem; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+            <div class="dashboard-content">
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-title">📊 Total (All)</div>
+                        <div class="kpi-value" id="kpi-total">—</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">👁 In View</div>
+                        <div class="kpi-value" id="kpi-mapped">—</div>
+                    </div>
+                    <div class="kpi-card" style="border-color: rgba(239, 68, 68, 0.4);" title="Total High Risk Families / Households (P1+P2+P3)">
+                        <div class="kpi-title">🔴 High Risk Families</div>
+                        <div class="kpi-value" id="kpi-hr" style="color: #f87171;">—</div>
+                    </div>
+                    <div class="kpi-card" style="border-color: rgba(234, 179, 8, 0.4);">
+                        <div class="kpi-title">🟡 Med Risk</div>
+                        <div class="kpi-value" id="kpi-mr" style="color: #fbbf24;">—</div>
+                    </div>
+                    <div class="kpi-card" style="border-color: rgba(34, 197, 94, 0.4); grid-column: span 2;">
+                        <div class="kpi-title">🟢 Low Risk</div>
+                        <div class="kpi-value" id="kpi-lr" style="color: #4ade80;">—</div>
+                    </div>
+                </div>
+                <!-- Risk breakdown mini-bar -->
+                <div id="risk-bar-container" style="height:8px; border-radius:6px; overflow:hidden; display:none; gap:1px; margin-top:-4px;">
+                    <div id="risk-bar-hr" style="background:#ef4444; height:100%; transition:width 0.4s ease; min-width:0;"></div>
+                    <div id="risk-bar-mr" style="background:#eab308; height:100%; transition:width 0.4s ease; min-width:0;"></div>
+                    <div id="risk-bar-lr" style="background:#22c55e; height:100%; transition:width 0.4s ease; min-width:0;"></div>
+                    <div id="risk-bar-none" style="background:#475569; height:100%; transition:width 0.4s ease; min-width:0;"></div>
+                </div>
+                <div class="district-table-wrapper">
+                    <table class="district-table">
+                        <thead>
+                            <tr>
+                                <th>District</th>
+                                <th>Total</th>
+                                <th>HR</th>
+                                <th>MR</th>
+                                <th>LR</th>
+                            </tr>
+                        </thead>
+                        <tbody id="district-tbody">
+                            <tr>
+                                <td colspan="5" style="text-align: center; color: #94a3b8; padding: 12px 0;">Pan map to see incidents</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="dashboard-footer" style="font-size:0.65rem; color:#475569; text-align:right; margin-top:4px;">—</div>
             </div>
-            <div class="query-filters">
-                <select id="query-district" class="query-select">
-                    <option value="">All Districts</option>
-                </select>
-                <select id="query-risk" class="query-select">
-                    <option value="">All Risk Levels</option>
-                    <option value="HR">High Risk</option>
-                    <option value="MR">Medium Risk</option>
-                    <option value="LR">Low Risk</option>
-                </select>
-                <select id="query-dsd" class="query-select">
-                    <option value="">All DSDs</option>
-                </select>
-                <select id="query-nature" class="query-select">
-                    <option value="">All Disaster Types</option>
-                    <option value="Landslide">Landslide / නායයෑම්</option>
-                    <option value="Cutting Failure">Cutting Failure / කණ්ඩි අස්ථාපර</option>
-                    <option value="Slope Failure">Slope Failure / බැවුම් අස්ථාපර</option>
-                    <option value="Rock Fall">Rock Fall / ගල් පෙරලීම්</option>
-                    <option value="Subsidence">Sinking / Subsidence (ගිලා බැසීම්)</option>
-                    <option value="Other">Other / වෙනත්</option>
-                </select>
-            </div>
-            <button id="reset-filters" class="query-reset-btn">Reset Filters</button>
         </div>
     </div>
-    <!-- Executive Summary Dashboard -->
-    <div class="dashboard-panel collapsed" id="dashboard-panel" style="display: none;">
-        <div class="dashboard-header" id="dashboard-toggle">
-            <h3>📊 Executive Summary</h3>
-            <button class="dashboard-toggle-btn">▼</button>
-        </div>
-        <div class="dashboard-content">
-            <div class="kpi-grid">
-                <div class="kpi-card">
-                    <div class="kpi-title">📊 Total (All)</div>
-                    <div class="kpi-value" id="kpi-total">—</div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-title">👁 In View</div>
-                    <div class="kpi-value" id="kpi-mapped">—</div>
-                </div>
-                <div class="kpi-card" style="border-color: rgba(239, 68, 68, 0.4);" title="Total High Risk Families / Households (P1+P2+P3)">
-                    <div class="kpi-title">🔴 High Risk Families</div>
-                    <div class="kpi-value" id="kpi-hr" style="color: #f87171;">—</div>
-                </div>
-                <div class="kpi-card" style="border-color: rgba(234, 179, 8, 0.4);">
-                    <div class="kpi-title">🟡 Med Risk</div>
-                    <div class="kpi-value" id="kpi-mr" style="color: #fbbf24;">—</div>
-                </div>
-                <div class="kpi-card" style="border-color: rgba(34, 197, 94, 0.4); grid-column: span 2;">
-                    <div class="kpi-title">🟢 Low Risk</div>
-                    <div class="kpi-value" id="kpi-lr" style="color: #4ade80;">—</div>
-                </div>
-            </div>
-            <!-- Risk breakdown mini-bar -->
-            <div id="risk-bar-container" style="height:8px; border-radius:6px; overflow:hidden; display:none; gap:1px; margin-top:-4px;">
-                <div id="risk-bar-hr" style="background:#ef4444; height:100%; transition:width 0.4s ease; min-width:0;"></div>
-                <div id="risk-bar-mr" style="background:#eab308; height:100%; transition:width 0.4s ease; min-width:0;"></div>
-                <div id="risk-bar-lr" style="background:#22c55e; height:100%; transition:width 0.4s ease; min-width:0;"></div>
-                <div id="risk-bar-none" style="background:#475569; height:100%; transition:width 0.4s ease; min-width:0;"></div>
-            </div>
-            <div class="district-table-wrapper">
-                <table class="district-table">
-                    <thead>
-                        <tr>
-                            <th>District</th>
-                            <th>Total</th>
-                            <th>HR</th>
-                            <th>MR</th>
-                            <th>LR</th>
-                        </tr>
-                    </thead>
-                    <tbody id="district-tbody">
-                        <tr>
-                            <td colspan="5" style="text-align: center; color: #94a3b8; padding: 12px 0;">Pan map to see incidents</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div id="dashboard-footer" style="font-size:0.65rem; color:#475569; text-align:right; margin-top:4px;">—</div>
-        </div>
+
+    <!-- F3: HR Priority-1 Alert Banner (shown when P1 sites are in viewport) -->
+    <div id="hr-alert-banner" class="hr-alert-banner" style="display:none;">
+        <span id="hr-alert-text">⚠️ HR Priority-1 sites in view</span>
+    </div>
+
+    <!-- F7: Mobile Stats Strip (inspection summary for mobile — desktop hides via CSS) -->
+    <div id="mobile-stats-strip" class="mobile-stats-strip" style="display:none;">
+        <span class="ms-item"><span id="ms-total">—</span>&nbsp;<span class="ms-label">Total</span></span>
+        <span class="ms-sep">·</span>
+        <span class="ms-item ms-hr"><span id="ms-hr">—</span>&nbsp;<span class="ms-label">HR in view</span></span>
+        <span class="ms-sep">·</span>
+        <span class="ms-item"><span id="ms-view">—</span>&nbsp;<span class="ms-label">In view</span></span>
     </div>
 
     <div class="controls-panel">
@@ -553,8 +578,8 @@
 
     <!-- MapLibre GL from CDN for instant cache hits (fallback: local copy in sw.js) -->
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous"></script>
-    <script src="pmtiles.js"></script>
-    <script src="app.js?v=63"></script>
+    <script src="pmtiles.js?v=64"></script><!-- L5 FIX: version-busted for proper cache invalidation -->
+    <script src="app.js?v=64"></script>
 </body>
 
 </html>

@@ -104,6 +104,7 @@ const map = new maplibregl.Map({
     attributionControl: true,
     preserveDrawingBuffer: false, // Better performance
     renderWorldCopies: false, // Don't render map copies
+    clickTolerance: window.innerWidth <= 768 ? 14 : 4, // Mobile touch tolerance to prevent micro-drags from canceling taps
     touchZoomRotate: true,
     touchPitch: true, // Enable pitch for 3D view
     dragRotate: true, // Enable rotation
@@ -166,6 +167,7 @@ map.on('load', () => {
     map.addLayer({ id: 'z-index-4-zones', type: 'background', layout: { visibility: 'none' } }); // Red/Yellow
     map.addLayer({ id: 'z-index-5-overlays', type: 'background', layout: { visibility: 'none' } }); // Contours, Satellite
     map.addLayer({ id: 'z-index-6-top', type: 'background', layout: { visibility: 'none' } }); // Inspection
+    updateProgress(80, 'Rendering hazard layers...'); // L7 FIX: additional progress milestone
 
     // IMP 7 FIX: Double-tap/dblclick finishes measurement without adding a phantom extra point
     map.on('dblclick', (e) => {
@@ -234,9 +236,9 @@ map.on('load', () => {
         }
     }
 
-    // Auto-load 1:10k when zoomed in (zoom level 12+)
+    // Auto-load 1:10k when zoomed in (zoom level 12+) — B6 FIX: fast inline flag check before getZoom()
     map.on('zoom', () => {
-        if (map.getZoom() >= 12 && !window.hazard10kLoaded) {
+        if (!window.hazard10kLoaded && map.getZoom() >= 12) {
             window.loadHazard10k();
         }
     });
@@ -541,42 +543,77 @@ map.on('load', () => {
         // Don't open popups while measurement tool is active
         if (isMeasuring) return;
 
-        const candidateLayers = [
+        const isMobile = window.innerWidth <= 768;
+
+        // 1. POINT LAYERS (Top Priority) — inspection points, satellite incident points, rain gauges
+        const pointLayers = [
             'inspection_points',
             'satellite_points',
-            'arg_locations_points',
+            'arg_locations_points'
+        ].filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+
+        // Generous touch hit radius for small point markers (32px on mobile = 64x64px comfortable tap box)
+        const pointRadius = isMobile ? 32 : 16;
+        const pointBbox = [
+            [e.point.x - pointRadius, e.point.y - pointRadius],
+            [e.point.x + pointRadius, e.point.y + pointRadius]
+        ];
+
+        let pointFeatures = [];
+        if (pointLayers.length > 0) {
+            pointFeatures = map.queryRenderedFeatures(pointBbox, { layers: pointLayers });
+        }
+
+        if (pointFeatures && pointFeatures.length > 0) {
+            // Find the closest point feature to where the user actually touched
+            let bestFeature = pointFeatures[0];
+            let minDistance = Infinity;
+
+            for (const feat of pointFeatures) {
+                if (feat.geometry && feat.geometry.type === 'Point') {
+                    const screenPt = map.project(feat.geometry.coordinates);
+                    const dist = Math.hypot(screenPt.x - e.point.x, screenPt.y - e.point.y);
+                    // Priority bonus for inspection_points
+                    const bonus = (feat.layer && feat.layer.id === 'inspection_points') ? -5 : 0;
+                    if (dist + bonus < minDistance) {
+                        minDistance = dist + bonus;
+                        bestFeature = feat;
+                    }
+                }
+            }
+
+            // Always anchor popup directly on the feature's true coordinates for pixel-perfect positioning
+            const coords = (bestFeature.geometry && bestFeature.geometry.coordinates) 
+                ? bestFeature.geometry.coordinates 
+                : e.lngLat;
+            showPopupForFeature(bestFeature, coords);
+            return; // Point was found and displayed — stop here! Background polygons NEVER intercept!
+        }
+
+        // 2. POLYGON OVERLAYS (Secondary Priority — ONLY when clicking clear open space away from points)
+        // NOTE: hazard_10k_fill and hazard_50k_fill are visual zonation basemaps (explained in Legend)
+        // and are excluded to avoid unwanted raw "Feature Information" debug popups on map taps.
+        const polygonLayers = [
             'satellite_polygons_fill',
             'satellite_polygons_line',
             'tiz_zones_fill',
-            'tiz_50k_fill',
-            'hazard_10k_fill',
-            'hazard_50k_fill'
+            'tiz_50k_fill'
         ].filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
 
-        if (candidateLayers.length === 0) return;
-
-        // BUG 7 FIX: Larger hit bbox on mobile (±20px) for ergonomic touch accuracy
-        const hitRadius = window.innerWidth <= 768 ? 20 : 12;
-        const bbox = [
-            [e.point.x - hitRadius, e.point.y - hitRadius],
-            [e.point.x + hitRadius, e.point.y + hitRadius]
-        ];
-        const features = map.queryRenderedFeatures(bbox, { layers: candidateLayers });
-
-        if (!features || features.length === 0) return;
-
-        // Prioritize inspection points > satellite points > rain gauges > polygons
-        const selectedFeature = features.find(f => f.layer && f.layer.id === 'inspection_points') ||
-                                features.find(f => f.layer && f.layer.id === 'satellite_points') ||
-                                features.find(f => f.layer && f.layer.id === 'arg_locations_points') ||
-                                features.find(f => f.layer && (f.layer.id === 'satellite_polygons_fill' || f.layer.id === 'satellite_polygons_line')) ||
-                                features.find(f => f.layer && f.layer.id === 'tiz_zones_fill') ||
-                                features.find(f => f.layer && f.layer.id === 'tiz_50k_fill') ||
-                                features.find(f => f.layer && f.layer.id === 'hazard_10k_fill') ||
-                                features.find(f => f.layer && f.layer.id === 'hazard_50k_fill') ||
-                                features[0];
-
-        showPopupForFeature(selectedFeature, e.lngLat);
+        if (polygonLayers.length > 0) {
+            const polyBbox = [
+                [e.point.x - 6, e.point.y - 6],
+                [e.point.x + 6, e.point.y + 6]
+            ];
+            const polyFeatures = map.queryRenderedFeatures(polyBbox, { layers: polygonLayers });
+            if (polyFeatures && polyFeatures.length > 0) {
+                const selectedPoly = polyFeatures.find(f => f.layer && (f.layer.id === 'satellite_polygons_fill' || f.layer.id === 'satellite_polygons_line')) ||
+                                     polyFeatures.find(f => f.layer && f.layer.id === 'tiz_zones_fill') ||
+                                     polyFeatures.find(f => f.layer && f.layer.id === 'tiz_50k_fill') ||
+                                     polyFeatures[0];
+                showPopupForFeature(selectedPoly, e.lngLat);
+            }
+        }
     });
 
     // Cursor hover feedback across interactive layers (attached safely to existing or lazy-loaded layers)
@@ -588,13 +625,13 @@ map.on('load', () => {
         map.on('mouseleave', layerId, () => { if (map.getLayer(layerId)) map.getCanvas().style.cursor = ''; });
     }
 
-    ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons_fill', 'satellite_polygons_line', 'hazard_10k_fill', 'hazard_50k_fill', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
+    ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons_fill', 'satellite_polygons_line', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
         if (map.getLayer(layerId)) attachLayerHover(layerId);
     });
 
     // Check for newly added layers on style data changes
     map.on('styledata', () => {
-        ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons_fill', 'satellite_polygons_line', 'hazard_10k_fill', 'hazard_50k_fill', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
+        ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons_fill', 'satellite_polygons_line', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
             if (map.getLayer(layerId)) attachLayerHover(layerId);
         });
     });
@@ -730,12 +767,12 @@ function showPopupForFeature(feature, coordinates) {
         }
 
         content = `
-            <div style="padding: 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 280px; max-width: 320px;">
-                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; padding-right: 24px;">
-                    <span style="font-weight: 700; color: #fff; font-size: 0.85rem; word-break: break-all; flex: 1; min-width: 0; padding-right: 8px;">📍 Ref: ${refNo}</span>
+            <div class="custom-popup-container" style="display: flex; flex-direction: column; max-height: min(420px, 60vh); width: 290px; box-sizing: border-box; overflow: hidden;">
+                <div style="padding: 12px 14px 8px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(15, 23, 42, 0.98); flex-shrink: 0; padding-right: 28px;">
+                    <span style="font-weight: 700; color: #fff; font-size: 0.85rem; word-break: break-all; flex: 1; min-width: 0;">📍 Ref: ${refNo}</span>
                     <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid ${badgeColor}; color: ${badgeColor}; background: ${badgeBg}; white-space: nowrap; flex-shrink: 0;">${risk}</span>
                 </div>
-                <div class="custom-popup-scroll" style="display: flex; flex-direction: column; max-height: 260px; overflow-y: auto; padding-right: 6px;">
+                <div class="custom-popup-scroll" style="padding: 10px 14px 14px 14px; flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain;">
                     ${detailsHtml || '<div style="color:#94a3b8; font-size:0.75rem;">No details available</div>'}
                 </div>
             </div>
@@ -769,21 +806,39 @@ function showPopupForFeature(feature, coordinates) {
             </div>
         `;
     } else {
-        // Generic popup for other layers
-        content = '<div class="popup-title">Feature Information</div>';
-        content += '<div class="popup-info">';
-        for (const key in props) {
-            if (props[key] !== null && props[key] !== undefined) {
-                content += `<b>${key}:</b> ${props[key]}<br>`;
-            }
+        // Clean fallback for any other layer, filtering out raw database IDs
+        const cleanProps = Object.entries(props).filter(([k, v]) => {
+            const lk = k.toLowerCase();
+            return !['objectid', 'fid', 'gridcode', 'shape_length', 'shape_area', 'geometry'].includes(lk) && v !== null && v !== undefined && String(v).trim() !== '';
+        });
+        if (cleanProps.length === 0) return; // Don't pop up empty or raw internal metadata
+        content = '<div class="popup-title">Feature Information</div><div class="popup-info">';
+        for (const [k, v] of cleanProps) {
+            content += `<b>${k}:</b> ${v}<br>`;
         }
         content += '</div>';
     }
 
-    new maplibregl.Popup({ className: 'custom-modern-popup' })
+    const popup = new maplibregl.Popup({ 
+        className: 'custom-modern-popup',
+        maxWidth: '320px',
+        closeButton: true,
+        closeOnClick: true
+    })
         .setLngLat(coordinates)
         .setHTML(content)
         .addTo(map);
+
+    // CRITICAL MOBILE FIX: Stop touch/wheel propagation so swiping scrolls the popup
+    // instead of panning the underlying MapLibre canvas!
+    const popupElem = popup.getElement();
+    if (popupElem) {
+        ['touchstart', 'touchmove', 'touchend', 'wheel'].forEach(evtType => {
+            popupElem.addEventListener(evtType, (ev) => {
+                ev.stopPropagation();
+            }, { passive: true });
+        });
+    }
 }
 
 function safeAddEventListener(id, event, callback) {
@@ -839,17 +894,36 @@ safeAddEventListener('layer-contours', 'change', (e) => {
 });
 
 
+// B8 FIX: Track when user manually dismisses the filter panel — reset when inspection is toggled off
+let userClosedQueryPanel = false;
+
 safeAddEventListener('layer-inspection', 'change', (e) => {
     if (e.target.checked && !window.inspectionLoaded) window.loadInspection();
     const visibility = e.target.checked ? 'visible' : 'none';
     if (map.getLayer('inspection_points')) map.setLayoutProperty('inspection_points', 'visibility', visibility);
 
-    // Advanced Query & Dashboard Visibility logic
-    const advPanel = document.getElementById('advanced-query-panel');
-    const dashPanel = document.getElementById('dashboard-panel');
-    if (advPanel) advPanel.style.display = e.target.checked ? 'flex' : 'none';
-    if (dashPanel) dashPanel.style.display = e.target.checked ? 'block' : 'none';
-    
+    const advPanel        = document.getElementById('advanced-query-panel');
+    const dashPanel       = document.getElementById('dashboard-panel');
+    const mobileStrip     = document.getElementById('mobile-stats-strip');  // F7
+    const hrBanner        = document.getElementById('hr-alert-banner');      // F3
+    const toggleFilterBtn = document.getElementById('toggle-filter-btn');
+
+    if (e.target.checked) {
+        if (advPanel && !userClosedQueryPanel) {
+            advPanel.style.display = 'flex';
+            if (toggleFilterBtn) toggleFilterBtn.classList.add('active');
+        }
+        if (dashPanel)  dashPanel.style.display  = 'flex';
+        if (mobileStrip) mobileStrip.style.display = 'flex'; // F7: show stats strip on mobile
+    } else {
+        if (advPanel)    advPanel.style.display    = 'none';
+        if (dashPanel)   dashPanel.style.display   = 'none';
+        if (mobileStrip) mobileStrip.style.display = 'none';  // F7
+        if (hrBanner)    hrBanner.style.display    = 'none';  // F3
+        if (toggleFilterBtn) toggleFilterBtn.classList.remove('active');
+        userClosedQueryPanel = false; // Re-enabling layer fresh resets view
+    }
+
     // Ensure search index is loaded so we can populate query dropdowns
     if (e.target.checked && localSearchIndex.length === 0) {
         loadSearchIndex();
@@ -860,7 +934,25 @@ safeAddEventListener('layer-inspection', 'change', (e) => {
 const closeQueryBtn = document.getElementById('close-query-btn');
 if (closeQueryBtn) {
     closeQueryBtn.addEventListener('click', () => {
-        document.getElementById('advanced-query-panel').style.display = 'none';
+        const advPanel = document.getElementById('advanced-query-panel');
+        if (advPanel) advPanel.style.display = 'none';
+        userClosedQueryPanel = true;
+        const toggleFilterBtn = document.getElementById('toggle-filter-btn');
+        if (toggleFilterBtn) toggleFilterBtn.classList.remove('active');
+    });
+}
+
+// Toggle Filter button inside Executive Summary header
+const toggleFilterBtn = document.getElementById('toggle-filter-btn');
+if (toggleFilterBtn) {
+    toggleFilterBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Avoid collapsing dashboard
+        const advPanel = document.getElementById('advanced-query-panel');
+        if (!advPanel) return;
+        const isHidden = (advPanel.style.display === 'none' || !advPanel.style.display);
+        advPanel.style.display = isHidden ? 'flex' : 'none';
+        userClosedQueryPanel = !isHidden;
+        toggleFilterBtn.classList.toggle('active', isHidden);
     });
 }
 
@@ -1090,7 +1182,7 @@ document.getElementById('locate-btn').addEventListener('click', () => {
                 navigator.geolocation.clearWatch(window.watchId);
                 window.watchId = null;
             }
-            loadingIndicator.classList.remove('active');
+            if (loadingIndicator) loadingIndicator.classList.remove('active'); // B4 FIX: null guard
             locateBtn.classList.remove('active');
             locateBtn.innerHTML = ICONS.locate + '<span class="fab-tooltip">Find Location</span>';
         }
@@ -1132,7 +1224,8 @@ document.getElementById('locate-btn').addEventListener('click', () => {
                         gpsEl.addEventListener('click', (ev) => {
                             const curPos = window.gpsMarker ? window.gpsMarker.getLngLat() : { lng, lat };
                             const pt = map.project(curPos);
-                            const bbox = [[pt.x - 16, pt.y - 16], [pt.x + 16, pt.y + 16]];
+                            const _r = window.innerWidth <= 768 ? 32 : 16; // B7 FIX: match canvas click radius
+                            const bbox = [[pt.x - _r, pt.y - _r], [pt.x + _r, pt.y + _r]];
                             const hits = map.queryRenderedFeatures(bbox, { layers: ['inspection_points', 'satellite_points'] });
                             if (hits && hits.length > 0) {
                                 ev.stopPropagation();
@@ -1432,7 +1525,8 @@ function displayResults(results) {
                 searchEl.style.cursor = 'pointer';
                 searchEl.addEventListener('click', (ev) => {
                     const pt = map.project([lon, lat]);
-                    const bbox = [[pt.x - 16, pt.y - 16], [pt.x + 16, pt.y + 16]];
+                    const _r = window.innerWidth <= 768 ? 32 : 16; // B7 FIX: match canvas click radius
+                    const bbox = [[pt.x - _r, pt.y - _r], [pt.x + _r, pt.y + _r]];
                     const hits = map.queryRenderedFeatures(bbox, { layers: ['inspection_points', 'satellite_points'] });
                     if (hits && hits.length > 0) {
                         ev.stopPropagation();
@@ -1448,7 +1542,8 @@ function displayResults(results) {
             if (result.isLocal) {
                 setTimeout(() => {
                     const pt = map.project([lon, lat]);
-                    const bbox = [[pt.x - 16, pt.y - 16], [pt.x + 16, pt.y + 16]];
+                    const _r = window.innerWidth <= 768 ? 32 : 16; // B7 FIX: match canvas click radius
+                    const bbox = [[pt.x - _r, pt.y - _r], [pt.x + _r, pt.y + _r]];
                     const hits = map.queryRenderedFeatures(bbox, { layers: ['inspection_points', 'satellite_points'] });
                     if (hits && hits.length > 0) {
                         showPopupForFeature(hits[0], [lon, lat]);
@@ -1816,13 +1911,19 @@ function saveBookmarks(bookmarks) {
 
 // Global markers array
 window.bookmarkMarkers = window.bookmarkMarkers || [];
+let _bookmarksLastSaved = null; // B5 FIX: Dirty flag to skip redundant marker rebuilds
 
 function updateBookmarkMarkers() {
-    // Clear existing
+    const bookmarks = getBookmarks();
+    const currentJson = JSON.stringify(bookmarks);
+    // B5 FIX: Skip full rebuild if bookmarks haven't changed — prevents flicker/jank on panel open
+    if (_bookmarksLastSaved === currentJson) return;
+    _bookmarksLastSaved = currentJson;
+
+    // Clear existing markers
     window.bookmarkMarkers.forEach(m => m.remove());
     window.bookmarkMarkers = [];
 
-    const bookmarks = getBookmarks();
     bookmarks.forEach(b => {
         const el = document.createElement('div');
         el.innerHTML = '<div style="color:#f59e0b; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5)); cursor:pointer;">' + ICONS.bookmark + '</div>';
@@ -2107,7 +2208,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v63'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v64'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2235,32 +2336,37 @@ function queryGrid(west, east, south, north) {
 }
 
 async function loadDashboardAndSearchData() {
+    // L3 & B1 FIX: Instant cache load from IndexedDB first (stale-while-revalidate pattern)
+    if (window.indexedDB) {
+        try {
+            const cached = await idbGet('summary_stats');
+            if (cached) {
+                summaryStats = cached;
+                populateDashboard(cached);
+            }
+        } catch (_) { /* IDB error */ }
+    }
+
     try {
-        // Fetch summary.json freshly (tiny <1KB payload) to discover any Cloudflare dataset updates
-        const res = await fetch(`${DATA_BASE_URL}/summary.json?_t=${Date.now()}`, { cache: 'no-store' });
+        // Fetch summary.json with cache validation instead of cache: no-store
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v64';
+        const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'no-cache' });
         if (res.ok) {
-            summaryStats = await res.json();
-            populateDashboard(summaryStats);
-            // IMP 10 FIX: Persist summary to IndexedDB so dashboard works offline on next visit
-            if (window.indexedDB) idbSet('summary_stats', summaryStats).catch(() => {});
-        } else {
-            throw new Error('summary.json fetch failed');
+            const freshStats = await res.json();
+            summaryStats = freshStats;
+            populateDashboard(freshStats);
+            // Persist fresh summary to IndexedDB
+            if (window.indexedDB) idbSet('summary_stats', freshStats).catch(() => {});
         }
     } catch (e) {
-        console.warn('summary.json fetch failed, trying offline cache:', e);
-        // IMP 10 FIX: Fall back to cached summary if network is unavailable
-        if (window.indexedDB) {
-            try {
-                const cached = await idbGet('summary_stats');
-                if (cached) { summaryStats = cached; populateDashboard(summaryStats); }
-            } catch (_) { /* IndexedDB unavailable */ }
-        }
+        console.warn('summary.json network fetch failed (offline mode active):', e);
     }
     // Force load search index immediately, checking for cloud-sync alignment
     await loadSearchIndex();
 }
 
 function populateDashboard(data) {
+    if (!data) return;
     // Populate global KPIs from summary.json (used before search_index loads)
     // Use cached DOM refs where available; fall back to getElementById for early calls before DOMContentLoaded completes
     const kpiTotal   = DOM.kpiTotal  || document.getElementById('kpi-total');
@@ -2269,13 +2375,22 @@ function populateDashboard(data) {
     const tbody      = DOM.tbody     || document.getElementById('district-tbody');
     const footer     = DOM.footer    || document.getElementById('dashboard-footer');
     // Set the immutable total count from pre-built summary
-    if (kpiTotal)  kpiTotal.innerHTML  = `${data.total_mapped.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
-    if (kpiHr)     kpiHr.innerHTML     = `${data.total_hr.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
+    if (kpiTotal && data.total_mapped != null) {
+        kpiTotal.innerHTML  = `${data.total_mapped.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
+    }
+    if (kpiHr && data.total_hr != null) {
+        kpiHr.innerHTML     = `${data.total_hr.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
+    }
     if (kpiMapped) kpiMapped.innerHTML = '—'; // will be updated by viewport stats
-    if (tbody) {
+    if (tbody && (!localSearchIndex || localSearchIndex.length === 0)) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#475569;padding:12px 0;">Pan or zoom map to see incidents</td></tr>';
     }
-    if (footer) footer.textContent = `Dataset: ${data.total_mapped.toLocaleString()} inspection records`;
+    // F5 FIX: Display dataset last updated timestamp if present in summary
+    if (footer) {
+        const datePart = data.updated_at ? ` · Last updated: ${data.updated_at}` : '';
+        const count = data.total_mapped != null ? data.total_mapped.toLocaleString() : '—';
+        footer.textContent = `Dataset: ${count} inspection records${datePart}`;
+    }
 }
 
 
@@ -2304,12 +2419,9 @@ function flyToDistrict(districtName) {
 const dashboardPanel = document.getElementById('dashboard-panel');
 const dashboardToggle = document.getElementById('dashboard-toggle');
 if (dashboardToggle && dashboardPanel) {
-    dashboardToggle.addEventListener('click', () => {
+    dashboardToggle.addEventListener('click', (e) => {
+        if (e.target.closest('#toggle-filter-btn')) return;
         dashboardPanel.classList.toggle('collapsed');
-        const btn = dashboardToggle.querySelector('.dashboard-toggle-btn');
-        if (btn) {
-            btn.textContent = dashboardPanel.classList.contains('collapsed') ? '▼' : '▲';
-        }
     });
 }
 
@@ -2395,7 +2507,7 @@ function updateViewportStats() {
     const west = bounds.getWest(), east = bounds.getEast();
     const south = bounds.getSouth(), north = bounds.getNorth();
 
-    let totalInView = 0, hrInView = 0, mrInView = 0, lrInView = 0;
+    let totalInView = 0, hrInView = 0, mrInView = 0, lrInView = 0, hrP1InView = 0;
     const viewportItems = Object.keys(spatialGrid).length > 0
         ? queryGrid(west, east, south, north)
         : localSearchIndex.filter(it => it.lon >= west && it.lon <= east && it.lat >= south && it.lat <= north);
@@ -2412,7 +2524,11 @@ function updateViewportStats() {
             if (currentFilters.r === 'LR' && cls !== 'LR') continue;
         }
         totalInView++;
-        if      (cls === 'HR') hrInView++;
+        if      (cls === 'HR') {
+            hrInView++;
+            const rStr = (item.r || '').toUpperCase();
+            if (rStr.includes('P1') || rStr.includes('HR1')) hrP1InView++;
+        }
         else if (cls === 'MR') mrInView++;
         else if (cls === 'LR') lrInView++;
     }
@@ -2422,6 +2538,36 @@ function updateViewportStats() {
     animateKpi(kpiHr,     hrInView);
     animateKpi(kpiMr,     mrInView);
     animateKpi(kpiLr,     lrInView);
+
+    // F3: High-Risk Priority-1 Alert Banner
+    const hrBanner = document.getElementById('hr-alert-banner');
+    const hrText   = document.getElementById('hr-alert-text');
+    const inspLayerVisible = map.getLayer('inspection_points') && map.getLayoutProperty('inspection_points', 'visibility') === 'visible';
+    if (hrBanner) {
+        if (inspLayerVisible && hrP1InView > 0) {
+            if (hrText) hrText.textContent = `⚠️ ${hrP1InView} HR Priority-1 site${hrP1InView > 1 ? 's' : ''} in view`;
+            hrBanner.style.display = 'block';
+        } else {
+            hrBanner.style.display = 'none';
+        }
+    }
+
+    // F7: Mobile Bottom Stats Strip
+    const msStrip = document.getElementById('mobile-stats-strip');
+    const msTotal = document.getElementById('ms-total');
+    const msHr    = document.getElementById('ms-hr');
+    const msView  = document.getElementById('ms-view');
+    if (msStrip) {
+        if (inspLayerVisible) {
+            msStrip.style.display = 'flex';
+            const tot = (summaryStats && summaryStats.total_mapped) ? summaryStats.total_mapped : localSearchIndex.length;
+            if (msTotal) msTotal.textContent = tot.toLocaleString();
+            if (msHr)    msHr.textContent = hrInView.toLocaleString();
+            if (msView)  msView.textContent = totalInView.toLocaleString();
+        } else {
+            msStrip.style.display = 'none';
+        }
+    }
 
     // Update TOTAL (ALL) KPI — persistent island-wide total, never changes on pan/zoom
     const kpiTotal = DOM.kpiTotal;
@@ -2478,11 +2624,12 @@ function updateViewportStats() {
         }
     }
 
-    // Footer
+    // Footer (F5 FIX: Show last updated timestamp if available)
     if (footer) {
         const now = new Date();
         const fullTot = (summaryStats && summaryStats.total_mapped) ? summaryStats.total_mapped : localSearchIndex.length;
-        footer.textContent = `Updated ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')} · In view: ${totalInView.toLocaleString()} of ${fullTot.toLocaleString()}`;
+        const datePart = (summaryStats && summaryStats.updated_at) ? ` · Sync: ${summaryStats.updated_at}` : '';
+        footer.textContent = `Updated ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')} · In view: ${totalInView.toLocaleString()} of ${fullTot.toLocaleString()}${datePart}`;
     }
 }
 
@@ -2716,7 +2863,7 @@ function zoomToFilteredBounds() {
         const advPanel = document.getElementById('advanced-query-panel');
         const dashPanel = document.getElementById('dashboard-panel');
         if (advPanel) advPanel.style.display = 'flex';
-        if (dashPanel) dashPanel.style.display = 'block';
+        if (dashPanel) dashPanel.style.display = 'flex';
     }
 
     if (matchedItems.length === 1) {
@@ -2915,3 +3062,17 @@ function applyAdvancedFilters() {
     });
 })();
 
+// =====================================================
+// F8: OFFLINE MODE INDICATOR
+// =====================================================
+(function () {
+    function updateOnlineStatus() {
+        const indicator = document.getElementById('offline-indicator');
+        if (indicator) {
+            indicator.style.display = navigator.onLine ? 'none' : 'block';
+        }
+    }
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    if (!navigator.onLine) updateOnlineStatus();
+})();

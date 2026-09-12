@@ -140,15 +140,34 @@
             margin-top: 0.5rem;
         }
 
-        /* Search Box */
-        .search-container {
+        /* Left Dock — Coordinates Search, Filters, and Dashboard in a Unified Non-Overlapping Column */
+        .left-dock {
             position: fixed;
             top: 1rem;
             left: 1rem;
-            z-index: 2000;
-            /* Ensure search is above everything */
-            width: 320px;
+            bottom: 3.5rem;
+            width: 330px;
             max-width: calc(100vw - 2rem);
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            z-index: 2000;
+            pointer-events: none;
+        }
+
+        .left-dock > * {
+            pointer-events: auto;
+        }
+
+        /* Search Box */
+        .search-container {
+            position: relative;
+            top: auto;
+            left: auto;
+            width: 100%;
+            max-width: 100%;
+            z-index: 10;
+            flex-shrink: 0;
         }
 
         .search-box {
@@ -1493,11 +1512,11 @@
 
         /* 6. Executive Summary Dashboard Panel Styles */
         .dashboard-panel {
-            position: fixed;
+            position: relative;
             top: auto;
-            bottom: 3.5rem;
-            /* raised to clear zoom/scale controls at bottom-left */
-            left: 1rem;
+            bottom: auto;
+            left: auto;
+            width: 100%;
             background: rgba(15, 23, 42, 0.97);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
@@ -1505,19 +1524,23 @@
             padding: 1.25rem;
             box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
             border: 1px solid rgba(139, 92, 246, 0.35);
-            z-index: 1500;
-            width: 330px;
-            max-height: 80vh;
+            z-index: 5;
+            flex: 0 1 auto;
+            min-height: 0;
+            max-height: 100%;
             display: flex;
             flex-direction: column;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             box-sizing: border-box;
+            overflow: hidden;
         }
 
         .dashboard-panel.collapsed {
             max-height: 46px;
+            min-height: 46px;
             padding: 0.7rem 1.25rem;
             overflow: hidden;
+            flex-shrink: 0;
         }
 
         .dashboard-header {
@@ -1527,6 +1550,7 @@
             cursor: pointer;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
+            flex-shrink: 0;
         }
 
         .dashboard-header h3 {
@@ -1540,6 +1564,35 @@
             background-clip: text;
         }
 
+        .dashboard-filter-btn {
+            background: rgba(139, 92, 246, 0.18);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            color: #c4b5fd;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            line-height: 1.2;
+        }
+
+        .dashboard-filter-btn:hover {
+            background: rgba(139, 92, 246, 0.35);
+            color: #ffffff;
+            border-color: rgba(139, 92, 246, 0.65);
+        }
+
+        .dashboard-filter-btn.active {
+            background: rgba(139, 92, 246, 0.5);
+            color: #ffffff;
+            border-color: #a78bfa;
+            box-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
+        }
+
         .dashboard-toggle-btn {
             background: none;
             border: none;
@@ -1549,6 +1602,7 @@
             padding: 0;
             line-height: 1;
             transition: transform 0.3s ease;
+            flex-shrink: 0;
         }
 
         .dashboard-panel.collapsed .dashboard-toggle-btn {
@@ -1556,12 +1610,14 @@
         }
 
         .dashboard-content {
-            margin-top: 1rem;
+            margin-top: 0.75rem;
             display: flex;
             flex-direction: column;
-            gap: 1rem;
-            overflow: hidden;
-            flex-grow: 1;
+            gap: 0.75rem;
+            overflow-y: auto;
+            flex: 1 1 auto;
+            min-height: 0;
+            padding-right: 2px;
         }
 
         .kpi-grid {
@@ -1635,6 +1691,18 @@
         }
 
         @media (max-width: 768px) {
+            .left-dock {
+                position: static;
+                display: contents;
+            }
+
+            .search-container {
+                position: fixed;
+                width: calc(100vw - 2rem);
+                top: 0.5rem;
+                left: 0.5rem;
+                z-index: 2000;
+            }
 
             /* Hide desktop-specific panels on mobile to save screen space */
             .dashboard-panel {
@@ -1652,31 +1720,46 @@
 
 
         /* Custom Modern Popup Styles */
+        .custom-modern-popup {
+            touch-action: pan-y !important;
+            pointer-events: auto !important;
+        }
+
         .custom-modern-popup .maplibregl-popup-content {
             background: rgba(15, 23, 42, 0.95) !important;
             backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
             border: 1px solid rgba(139, 92, 246, 0.4) !important;
             border-radius: 14px !important;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
             color: #fff !important;
             padding: 0 !important;
-            max-width: min(300px, calc(100vw - 32px)) !important;
-            max-height: 60vh;
-            overflow-y: auto;
+            max-width: min(320px, calc(100vw - 32px)) !important;
+            max-height: min(440px, 60vh) !important;
+            overflow: hidden !important;
+            display: flex;
+            flex-direction: column;
+            touch-action: pan-y !important;
+            overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
         }
 
         @media (max-width: 768px) and (max-height: 500px) {
             .custom-modern-popup .maplibregl-popup-content {
-                max-height: 45vh;
+                max-height: 50vh !important;
+            }
+            .custom-popup-container {
+                max-height: 50vh !important;
             }
         }
 
         .custom-modern-popup .maplibregl-popup-close-button {
             color: #94a3b8 !important;
             padding: 8px 12px !important;
-            font-size: 14px !important;
+            font-size: 16px !important;
             border-radius: 0 14px 0 0 !important;
             outline: none !important;
+            z-index: 30 !important;
         }
 
         .custom-modern-popup .maplibregl-popup-close-button:hover {
@@ -1689,6 +1772,13 @@
             border-top-color: rgba(15, 23, 42, 0.95) !important;
             border-left-color: rgba(15, 23, 42, 0.95) !important;
             border-right-color: rgba(15, 23, 42, 0.95) !important;
+        }
+
+        .custom-popup-scroll {
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            overscroll-behavior: contain !important;
+            touch-action: pan-y !important;
         }
 
         .custom-popup-scroll::-webkit-scrollbar {
@@ -1896,4 +1986,127 @@
 
         #clear-measure:hover {
             background: rgba(255, 255, 255, 0.15) !important;
+        }
+
+        /* ======================================================= */
+        /* BUG & FEATURE FIXES — BATCH SEPT 2026                   */
+        /* ======================================================= */
+
+        /* B3 FIX: Minimum 44×44px tap target for popup close button */
+        .custom-modern-popup .maplibregl-popup-close-button {
+            min-width: 44px !important;
+            min-height: 44px !important;
+            touch-action: manipulation !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+
+        /* L6 FIX: Reduce GPU-expensive backdrop-filter blur on mobile panels */
+        @media (max-width: 768px) {
+            .search-box,
+            .advanced-query-panel,
+            .legend {
+                backdrop-filter: blur(8px) !important;
+                -webkit-backdrop-filter: blur(8px) !important;
+            }
+        }
+
+        /* F3: HR Priority-1 Alert Banner */
+        .hr-alert-banner {
+            position: fixed;
+            left: 1rem;
+            bottom: 5rem;
+            z-index: 1995;
+            background: rgba(127, 29, 29, 0.92);
+            border: 1px solid rgba(239, 68, 68, 0.55);
+            color: #fca5a5;
+            padding: 5px 14px;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+            white-space: nowrap;
+            animation: hrAlertPulse 2.5s ease-in-out infinite;
+        }
+
+        @media (max-width: 768px) {
+            .hr-alert-banner {
+                left: 0.5rem;
+                bottom: max(9rem, calc(7.5rem + env(safe-area-inset-bottom)));
+                font-size: 0.68rem;
+                padding: 4px 10px;
+            }
+        }
+
+        @keyframes hrAlertPulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.65; }
+        }
+
+        /* F7: Mobile Stats Strip */
+        .mobile-stats-strip {
+            position: fixed;
+            left: 0.5rem;
+            bottom: max(5rem, calc(3.8rem + env(safe-area-inset-bottom)));
+            z-index: 1995;
+            background: rgba(15, 23, 42, 0.88);
+            border: 1px solid rgba(139, 92, 246, 0.28);
+            border-radius: 16px;
+            display: none; /* JS controls; CSS media hides on desktop */
+            align-items: center;
+            gap: 0;
+            padding: 4px 12px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: #cbd5e1;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+            max-width: 62vw;
+            white-space: nowrap;
+        }
+
+        .ms-item  { display: inline; }
+        .ms-hr    { color: #f87171; font-weight: 600; }
+        .ms-label { color: #64748b; }
+        .ms-sep   { padding: 0 6px; color: #334155; }
+
+        /* Desktop: always hidden regardless of JS inline style */
+        @media (min-width: 769px) {
+            .mobile-stats-strip { display: none !important; }
+        }
+
+        /* F8: Offline Mode Indicator */
+        #offline-indicator {
+            display: none;
+            position: fixed;
+            top: 1rem;
+            right: 5rem;
+            z-index: 3100;
+            background: rgba(220, 38, 38, 0.92);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            letter-spacing: 0.02em;
+            pointer-events: none;
+        }
+
+        @media (max-width: 768px) {
+            #offline-indicator {
+                top: 0.4rem;
+                right: 0.5rem;
+                font-size: 0.65rem;
+                padding: 3px 10px;
+            }
         }
