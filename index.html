@@ -5,7 +5,7 @@
     <script>
         // Force aggressive cache purge for returning users (safe against mobile storage restriction loops)
         // ⚠️ DEPLOY-1: When bumping version, also update CACHE_NAME in sw.js and style.css?v= in index.html
-        const APP_VERSION = "v64";
+        const APP_VERSION = "v65";
         try {
             if (localStorage.getItem('lhmpVersion') !== APP_VERSION && !window.location.search.includes('update=')) {
                 localStorage.setItem('lhmpVersion', APP_VERSION);
@@ -36,19 +36,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev" crossorigin>
-    
-    <!-- Preload Critical Resources -->
-    <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" as="style" crossorigin>
-    <link rel="preload" href="style.css?v=64" as="style">
     <link rel="preconnect" href="https://unpkg.com" crossorigin>
-    <!-- Preload search index so it starts downloading before app.js requests it -->
-    <link rel="preload" href="https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev/search_index.json?v=64" as="fetch" crossorigin>
-
-    <!-- L2 FIX: Async Google Fonts load — no longer render-blocking -->
-    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
-    <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
+    
+    <!-- Google Fonts Async Load (Non-render-blocking, zero SW mismatch) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" crossorigin />
-    <link href="style.css?v=64" rel="stylesheet" />
+    <link href="style.css?v=65" rel="stylesheet" />
 </head>
 
 <body>
@@ -76,7 +70,7 @@
             <div class="app-title-bar">
                 <span class="app-title-icon">🏔️</span>
                 <span class="app-title-text">Landslide Hazard Zonation Map</span>
-                <span class="app-title-badge">Sri Lanka • v64</span>
+                <span class="app-title-badge">Sri Lanka • v65</span>
             </div>
             <div class="search-box">
                 <div class="search-input-wrapper">
@@ -578,8 +572,8 @@
 
     <!-- MapLibre GL from CDN for instant cache hits (fallback: local copy in sw.js) -->
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous"></script>
-    <script src="pmtiles.js?v=64"></script><!-- L5 FIX: version-busted for proper cache invalidation -->
-    <script src="app.js?v=64"></script>
+    <script src="pmtiles.js?v=65"></script><!-- L5 FIX: version-busted for proper cache invalidation -->
+    <script src="app.js?v=65"></script>
 </body>
 
 </html>

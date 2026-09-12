@@ -1165,7 +1165,7 @@ var pmtiles = (() => {
           const actualLength = +contentRange.substr(8);
           resp = yield fetch(this.url, {
             signal,
-            cache: "reload",
+            // cache: "reload", // Removed to prevent ERR_CACHE_OPERATION_NOT_SUPPORTED
             headers: { range: `bytes=0-${actualLength - 1}` }
             //biome-ignore lint: "cache" is incompatible between cloudflare workers and browser
           });

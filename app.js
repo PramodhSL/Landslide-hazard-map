@@ -253,7 +253,7 @@ map.on('load', () => {
 
         map.addSource('inspection_reports', {
             type: 'vector',
-            url: `pmtiles://${DATA_BASE_URL}/inspection_reports.pmtiles?v=${APP_VERSION}`
+            url: `pmtiles://${DATA_BASE_URL}/inspection_reports.pmtiles`
         });
 
         // Inspection Report Points (Individual dots via PMTiles vector stream)
@@ -2208,7 +2208,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v64'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v65'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2349,7 +2349,7 @@ async function loadDashboardAndSearchData() {
 
     try {
         // Fetch summary.json with cache validation instead of cache: no-store
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v64';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v65';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'no-cache' });
         if (res.ok) {
             const freshStats = await res.json();
@@ -2385,11 +2385,13 @@ function populateDashboard(data) {
     if (tbody && (!localSearchIndex || localSearchIndex.length === 0)) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#475569;padding:12px 0;">Pan or zoom map to see incidents</td></tr>';
     }
-    // F5 FIX: Display dataset last updated timestamp if present in summary
+    // Dashboard footer
     if (footer) {
-        const datePart = data.updated_at ? ` · Last updated: ${data.updated_at}` : '';
-        const count = data.total_mapped != null ? data.total_mapped.toLocaleString() : '—';
-        footer.textContent = `Dataset: ${count} inspection records${datePart}`;
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        const count = (data && data.total_mapped != null) ? data.total_mapped.toLocaleString() : '—';
+        footer.textContent = `Updated ${dateStr} ${timeStr} · In view: ${count} of ${count}`;
     }
 }
 
@@ -2624,12 +2626,13 @@ function updateViewportStats() {
         }
     }
 
-    // Footer (F5 FIX: Show last updated timestamp if available)
+    // Footer: Display current date and time without raw sync timestamp
     if (footer) {
         const now = new Date();
+        const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
         const fullTot = (summaryStats && summaryStats.total_mapped) ? summaryStats.total_mapped : localSearchIndex.length;
-        const datePart = (summaryStats && summaryStats.updated_at) ? ` · Sync: ${summaryStats.updated_at}` : '';
-        footer.textContent = `Updated ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')} · In view: ${totalInView.toLocaleString()} of ${fullTot.toLocaleString()}${datePart}`;
+        footer.textContent = `Updated ${dateStr} ${timeStr} · In view: ${totalInView.toLocaleString()} of ${fullTot.toLocaleString()}`;
     }
 }
 
