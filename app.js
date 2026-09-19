@@ -793,15 +793,39 @@ function showPopupForFeature(feature, coordinates) {
     } else if (layerId === 'satellite_polygons_fill' || layerId === 'satellite_polygons_line' || layerId === 'satellite_points') {
         const featType = props.type === 'incident_point' ? 'Incident Point' : 'Landslide Polygon';
         const name = props.Name || props.name || props.ID || 'Satellite Detected Landslide';
+        const dist = props.District || props.district || '';
+        const dsd = props.DSD || props.dsd || '';
+        const gnd = props.GND || props.gnd || '';
+
+        // Measurements & Topography
+        const areaHa = props.Area_ha != null ? Number(props.Area_ha).toFixed(3) : null;
+        const areaSqm = props.Area_sqm != null ? Math.round(Number(props.Area_sqm)).toLocaleString() : null;
+        const perim = props.Perim_m != null ? Math.round(Number(props.Perim_m)).toLocaleString() : null;
+        const maxLen = props.MaxLen_m != null ? Math.round(Number(props.MaxLen_m)).toLocaleString() : null;
+        const maxWid = props.MaxWid_m != null ? Math.round(Number(props.MaxWid_m)).toLocaleString() : null;
+        const elevDrop = props.ElevDrop_m != null ? Math.round(Number(props.ElevDrop_m)).toLocaleString() : null;
+        const minElev = props.MinElev_m != null ? Math.round(Number(props.MinElev_m)).toLocaleString() : null;
+        const maxElev = props.MaxElev_m != null ? Math.round(Number(props.MaxElev_m)).toLocaleString() : null;
+
         content = `
-            <div style="padding: 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 220px;">
-                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; padding-right: 20px;">
+            <div style="padding: 12px 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 240px; max-width: 310px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; padding-right: 20px;">
                     <span style="font-weight: 700; color: #fff; font-size: 0.85rem;">🛰️ ${name}</span>
                     <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid #f97316; color: #f97316; background: rgba(249, 115, 22, 0.15); white-space: nowrap;">${featType}</span>
                 </div>
-                <div style="font-size: 0.75rem; color: #cbd5e1; line-height: 1.5;">
-                    <div><b>Source:</b> Satellite Imagery Analysis</div>
-                    <div><b>Division:</b> Human Settlement & Planning</div>
+                <div style="font-size: 0.75rem; color: #cbd5e1; line-height: 1.55; display: flex; flex-direction: column; gap: 3px;">
+                    ${(dist || dsd || gnd) ? `
+                    <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 5px; margin-bottom: 3px;">
+                        ${dist ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">District:</span> <b style="color:#fff;">${dist}</b></div>` : ''}
+                        ${dsd ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">DSD:</span> <b style="color:#fff;">${dsd}</b></div>` : ''}
+                        ${gnd ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">GND:</span> <b style="color:#fff;">${gnd}</b></div>` : ''}
+                    </div>
+                    ` : ''}
+                    ${areaHa ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Area:</span> <b style="color:#38bdf8;">${areaHa} ha</b> ${areaSqm ? `<span style="color:#64748b; font-size:0.68rem;">(${areaSqm} m²)</span>` : ''}</div>` : ''}
+                    ${(maxLen || maxWid) ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Dimensions:</span> <b style="color:#fff;">${maxLen ? maxLen + 'm (L)' : ''} ${maxWid ? '× ' + maxWid + 'm (W)' : ''}</b></div>` : ''}
+                    ${perim ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Perimeter:</span> <b style="color:#fff;">${perim} m</b></div>` : ''}
+                    ${elevDrop ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Elevation Drop:</span> <b style="color:#fff;">${elevDrop} m</b> ${minElev && maxElev ? `<span style="color:#64748b; font-size:0.68rem;">(${minElev}m – ${maxElev}m)</span>` : ''}</div>` : ''}
+                    <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06); color:#64748b; font-size:0.68rem;"><b>Source:</b> Satellite Imagery Analysis</div>
                 </div>
             </div>
         `;
@@ -2208,7 +2232,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v65'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v66'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2349,7 +2373,7 @@ async function loadDashboardAndSearchData() {
 
     try {
         // Fetch summary.json with cache validation instead of cache: no-store
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v65';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v66';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'no-cache' });
         if (res.ok) {
             const freshStats = await res.json();
