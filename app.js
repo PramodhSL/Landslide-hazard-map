@@ -1386,29 +1386,77 @@ async function searchLocation(query) {
         }
     }
 
-    // 2. Search Local Index (Ref Numbers, GND name, DSD)
-    // NBRI mapped to NBRO so the search works internally with legacy data
-    const q = query.toLowerCase().trim().replace('nbri', 'nbro');
-    const localMatches = [];
+    // 2. Search Local Index (Ref Numbers, GND name, DSD, District)
+    // Handle punctuation/spaces variations (e.g. LRR-YTP-80 vs LRR YTP-80 vs YTP80) & NBRI/NBRO equivalence
+    const rawQ = query.trim();
+    const q = rawQ.toLowerCase().replace(/nbri/g, 'nbro');
+    const qCanon = rawQ.toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/nbri/g, 'nbro').replace(/[^a-z0-9]/g, '');
+    const qTokens = q.split(/[\s,+/_\-]+/).filter(t => t.length > 0);
+
+    const scoredMatches = [];
     if (localSearchIndex && localSearchIndex.length > 0) {
-        for (const item of localSearchIndex) {
-            if (item.n.toLowerCase().includes(q) || 
-                item.g.toLowerCase().includes(q) || 
-                item.d.toLowerCase().includes(q) ||
-                item.dis.toLowerCase().includes(q)) {
-                localMatches.push(item);
-                if (localMatches.length >= 8) break; // Limit local hits
+        for (let i = 0; i < localSearchIndex.length; i++) {
+            const item = localSearchIndex[i];
+            const nRaw = item.n || '';
+            const gRaw = item.g || '';
+            const dRaw = item.d || '';
+            const disRaw = item.dis || '';
+
+            const nLower = nRaw.toLowerCase();
+            const gLower = gRaw.toLowerCase();
+            const dLower = dRaw.toLowerCase();
+            const disLower = disRaw.toLowerCase();
+
+            const mCanon = nRaw.toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/nbri/g, 'nbro').replace(/[^a-z0-9]/g, '');
+
+            let score = 0;
+
+            // A. Punctuation-agnostic reference matching (e.g. LRR-YTP-80 vs LRR YTP-80 vs YTP80)
+            if (qCanon.length >= 2 && mCanon.length >= 2) {
+                if (mCanon === qCanon) {
+                    score += 2000; // Exact canonical ref match
+                } else if (mCanon.startsWith(qCanon)) {
+                    score += 1000; // Prefix match
+                } else if (mCanon.includes(qCanon)) {
+                    score += 500;  // Substring match
+                }
+            }
+
+            // B. Direct substring matches on raw fields
+            if (nLower.includes(q))   score += 400;
+            if (gLower.includes(q))   score += 150;
+            if (dLower.includes(q))   score += 100;
+            if (disLower.includes(q)) score += 50;
+
+            // C. Multi-token match across all fields (e.g. "Kegalle YTP-80" or "Ududumbara SUJ")
+            if (qTokens.length > 1) {
+                const combined = `${nLower} ${gLower} ${dLower} ${disLower}`;
+                if (qTokens.every(tok => combined.includes(tok))) {
+                    score += 300;
+                }
+            }
+
+            if (score > 0) {
+                scoredMatches.push({ score, item });
             }
         }
+
+        // Sort highest relevance first and take top 10
+        scoredMatches.sort((a, b) => b.score - a.score);
     }
 
-    const formattedLocal = localMatches.map(m => ({
-        display_name: `${m.n.replace(/NBRO/g, 'NBRI')} - GND: ${m.g || 'N/A'}, DSD: ${m.d || 'N/A'} (${m.dis} District)`,
-        lat: m.lat,
-        lon: m.lon,
-        isLocal: true,
-        risk: m.r
-    }));
+    const localMatches = scoredMatches.slice(0, 10).map(s => s.item);
+
+    const formattedLocal = localMatches.map(m => {
+        const refLabel = m.n ? m.n.replace(/NBRO/g, 'NBRI') : 'Site';
+        return {
+            display_name: `${refLabel} - GND: ${m.g || 'N/A'}, DSD: ${m.d || 'N/A'} (${m.dis} District)`,
+            lat: m.lat,
+            lon: m.lon,
+            isLocal: true,
+            risk: m.r
+        };
+    });
 
     if (formattedLocal.length > 0) {
         displayResults(formattedLocal);
@@ -2232,7 +2280,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v66'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v67'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2373,7 +2421,7 @@ async function loadDashboardAndSearchData() {
 
     try {
         // Fetch summary.json with cache validation instead of cache: no-store
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v66';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v67';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'no-cache' });
         if (res.ok) {
             const freshStats = await res.json();
