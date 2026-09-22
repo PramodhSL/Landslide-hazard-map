@@ -2280,7 +2280,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v67'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v68'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2421,7 +2421,7 @@ async function loadDashboardAndSearchData() {
 
     try {
         // Fetch summary.json with cache validation instead of cache: no-store
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v67';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v68';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'no-cache' });
         if (res.ok) {
             const freshStats = await res.json();

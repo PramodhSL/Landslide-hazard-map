@@ -5,7 +5,7 @@
     <script>
         // Force aggressive cache purge for returning users (safe against mobile storage restriction loops)
         // ⚠️ DEPLOY-1: When bumping version, also update CACHE_NAME in sw.js and style.css?v= in index.html
-        const APP_VERSION = "v67";
+        const APP_VERSION = "v68";
         try {
             if (localStorage.getItem('lhmpVersion') !== APP_VERSION && !window.location.search.includes('update=')) {
                 localStorage.setItem('lhmpVersion', APP_VERSION);
@@ -42,7 +42,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" crossorigin />
-    <link href="style.css?v=67" rel="stylesheet" />
+    <link href="style.css?v=68" rel="stylesheet" />
 </head>
 
 <body>
@@ -70,7 +70,7 @@
             <div class="app-title-bar">
                 <span class="app-title-icon">🏔️</span>
                 <span class="app-title-text">Landslide Hazard Zonation Map</span>
-                <span class="app-title-badge">Sri Lanka • v67</span>
+                <span class="app-title-badge">Sri Lanka • v68</span>
             </div>
             <div class="search-box">
                 <div class="search-input-wrapper">
@@ -572,8 +572,8 @@
 
     <!-- MapLibre GL from CDN for instant cache hits (fallback: local copy in sw.js) -->
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous"></script>
-    <script src="pmtiles.js?v=67"></script><!-- L5 FIX: version-busted for proper cache invalidation -->
-    <script src="app.js?v=67"></script>
+    <script src="pmtiles.js?v=68"></script><!-- L5 FIX: version-busted for proper cache invalidation -->
+    <script src="app.js?v=68"></script>
 </body>
 
 </html>
