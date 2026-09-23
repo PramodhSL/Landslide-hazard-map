@@ -4,8 +4,9 @@ let searchResults;
 let searchInput;
 let clearBtn;
 
-// All data is fetched directly from the Cloudflare R2 bucket.
-const DATA_BASE_URL = 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev';
+// Data source: automatically uses local origin when running on localhost/127.0.0.1, falls back to Cloudflare R2 on production
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const DATA_BASE_URL = isLocal ? window.location.origin : 'https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev';
 
 // Local search and summary statistics variables
 let localSearchIndex = [];
@@ -534,6 +535,56 @@ map.on('load', () => {
         attachLayerHover('satellite_points'); // IMP 5 FIX
     };
 
+    // 🛸 Drone 3D Surveys Layer Loader (LiDAR & Photogrammetry)
+    window.droneSurveysLoaded = false;
+    window.loadDroneSurveys = function () {
+        if (window.droneSurveysLoaded) return;
+        window.droneSurveysLoaded = true;
+
+        const droneDataUrl = isLocal ? 'drone_surveys.geojson' : `${DATA_BASE_URL}/drone_surveys.geojson`;
+        map.addSource('drone_surveys_source', {
+            type: 'geojson',
+            data: droneDataUrl
+        });
+
+        // 1. Soft pulsing cyan outer halo
+        map.addLayer({
+            'id': 'drone_surveys_glow',
+            'type': 'circle',
+            'source': 'drone_surveys_source',
+            'paint': {
+                'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 7, 10, 11, 14, 16],
+                'circle-color': '#06b6d4',
+                'circle-opacity': 0.35,
+                'circle-stroke-width': 1.5,
+                'circle-stroke-color': '#22d3ee',
+                'circle-stroke-opacity': 0.7
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-5-overlays');
+
+        // 2. Crisp core point (Cyan for LiDAR, Violet for Photogrammetry)
+        map.addLayer({
+            'id': 'drone_surveys_points',
+            'type': 'circle',
+            'source': 'drone_surveys_source',
+            'paint': {
+                'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 4.5, 10, 6, 14, 8],
+                'circle-color': [
+                    'case',
+                    ['==', ['get', 'survey_type'], 'Photogrammetry'],
+                    '#a855f7',
+                    '#06b6d4'
+                ],
+                'circle-stroke-width': 2,
+                'circle-stroke-color': '#ffffff'
+            },
+            'layout': { 'visibility': 'visible' }
+        }, 'z-index-5-overlays');
+
+        attachLayerHover('drone_surveys_points');
+    };
+
 
     // Fetch summary.json and search_index.json
     loadDashboardAndSearchData();
@@ -545,9 +596,10 @@ map.on('load', () => {
 
         const isMobile = window.innerWidth <= 768;
 
-        // 1. POINT LAYERS (Top Priority) — inspection points, satellite incident points, rain gauges
+        // 1. POINT LAYERS (Top Priority) — inspection points, drone survey points, satellite incident points, rain gauges
         const pointLayers = [
             'inspection_points',
+            'drone_surveys_points',
             'satellite_points',
             'arg_locations_points'
         ].filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
@@ -625,16 +677,22 @@ map.on('load', () => {
         map.on('mouseleave', layerId, () => { if (map.getLayer(layerId)) map.getCanvas().style.cursor = ''; });
     }
 
-    ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons_fill', 'satellite_polygons_line', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
+    ['inspection_points', 'drone_surveys_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons_fill', 'satellite_polygons_line', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
         if (map.getLayer(layerId)) attachLayerHover(layerId);
     });
 
     // Check for newly added layers on style data changes
     map.on('styledata', () => {
-        ['inspection_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons_fill', 'satellite_polygons_line', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
+        ['inspection_points', 'drone_surveys_points', 'satellite_points', 'arg_locations_points', 'satellite_polygons_fill', 'satellite_polygons_line', 'tiz_zones_fill', 'tiz_50k_fill'].forEach(layerId => {
             if (map.getLayer(layerId)) attachLayerHover(layerId);
         });
     });
+
+    // Auto-load Drone Surveys if checked
+    const droneCheck = document.getElementById('layer-drone-surveys');
+    if (droneCheck && droneCheck.checked) {
+        window.loadDroneSurveys();
+    }
 
     // Map loaded - hide loading indicator with smooth transition
     updateProgress(100, 'Map ready!');
@@ -826,6 +884,78 @@ function showPopupForFeature(feature, coordinates) {
                     ${perim ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Perimeter:</span> <b style="color:#fff;">${perim} m</b></div>` : ''}
                     ${elevDrop ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Elevation Drop:</span> <b style="color:#fff;">${elevDrop} m</b> ${minElev && maxElev ? `<span style="color:#64748b; font-size:0.68rem;">(${minElev}m – ${maxElev}m)</span>` : ''}</div>` : ''}
                     <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06); color:#64748b; font-size:0.68rem;"><b>Source:</b> Satellite Imagery Analysis</div>
+                </div>
+            </div>
+        `;
+    } else if (layerId === 'drone_surveys_points') {
+        const siteName = props.site_name || 'Drone Damage Survey';
+        const district = props.district || '';
+        const dsd = props.dsd || '';
+        const gnd = props.gnd || '';
+        const village = props.village || '';
+        const surveyType = props.survey_type || 'UAV Survey';
+        const surveyDate = props.survey_date || 'N/A';
+        const officer = props.officer || '';
+        const modelLink = props.model_link || '';
+        const matchStatus = props.match_status || '';
+        const initH = props.init_height_m ? `${props.init_height_m} m` : null;
+        const lengthM = props.length_m ? `${props.length_m} m` : null;
+        const widthM = props.init_width_m ? `${props.init_width_m} m` : null;
+        const depH = props.deposition_height_m ? `${props.deposition_height_m} m` : null;
+
+        const isLidar = surveyType.toLowerCase().includes('lidar');
+        const badgeColor = isLidar ? '#06b6d4' : '#a855f7';
+        const badgeBg = isLidar ? 'rgba(6, 182, 212, 0.2)' : 'rgba(168, 85, 247, 0.2)';
+
+        let actionBtnHtml = '';
+        if (modelLink && modelLink.startsWith('http')) {
+            actionBtnHtml = `
+                <a href="${modelLink}" target="_blank" rel="noopener noreferrer" 
+                   style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; padding: 10px 14px; background: linear-gradient(135deg, #06b6d4, #2563eb); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 0.82rem; box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4); transition: transform 0.2s, box-shadow 0.2s;">
+                    <span>🌐 Open 3D Model (Agisoft)</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                </a>
+            `;
+        } else {
+            actionBtnHtml = `
+                <div style="margin-top: 8px; padding: 6px 10px; background: rgba(255,255,255,0.06); border-radius: 6px; text-align: center; font-size: 0.72rem; color: #94a3b8;">
+                    ⏳ 3D Model Processing / Field Record
+                </div>
+            `;
+        }
+
+        content = `
+            <div style="padding: 12px 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 260px; max-width: 320px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; padding-right: 20px;">
+                    <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+                        <span style="font-size: 1rem;">🛸</span>
+                        <span style="font-weight: 700; color: #fff; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${siteName}</span>
+                    </div>
+                    <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid ${badgeColor}; color: ${badgeColor}; background: ${badgeBg}; white-space: nowrap; flex-shrink: 0;">${surveyType}</span>
+                </div>
+                <div style="font-size: 0.75rem; color: #cbd5e1; line-height: 1.5; display: flex; flex-direction: column; gap: 3px;">
+                    <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 5px; margin-bottom: 3px;">
+                        <div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Location:</span> <b style="color:#fff;">${district}</b> &bull; ${dsd}${gnd ? ` &bull; ${gnd}` : ''}</div>
+                        ${village ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Village:</span> <b style="color:#fff;">${village}</b></div>` : ''}
+                    </div>
+                    ${matchStatus ? `
+                        <div style="margin-bottom: 4px; padding: 4px 8px; background: rgba(249, 115, 22, 0.15); border: 1px solid rgba(249, 115, 22, 0.3); border-radius: 6px; font-size: 0.7rem; color: #fdba74;">
+                            🛰️ <b>Satellite Landslide:</b> ${matchStatus}
+                        </div>
+                    ` : ''}
+                    ${(lengthM || widthM || initH || depH) ? `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 4px 0; background: rgba(255,255,255,0.03); padding: 6px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                        ${lengthM ? `<div><span style="color:#94a3b8; font-size:0.65rem; display:block;">Length</span><b style="color:#fff;">${lengthM}</b></div>` : ''}
+                        ${widthM ? `<div><span style="color:#94a3b8; font-size:0.65rem; display:block;">Width</span><b style="color:#fff;">${widthM}</b></div>` : ''}
+                        ${initH ? `<div><span style="color:#94a3b8; font-size:0.65rem; display:block;">Initiation Ht</span><b style="color:#fff;">${initH}</b></div>` : ''}
+                        ${depH ? `<div><span style="color:#94a3b8; font-size:0.65rem; display:block;">Deposition Ht</span><b style="color:#fff;">${depH}</b></div>` : ''}
+                    </div>
+                    ` : ''}
+                    <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 2px;">
+                        <span>📅 Survey Date: ${surveyDate}</span>
+                        ${officer ? `<br><span>👷 Officer: ${officer}</span>` : ''}
+                    </div>
+                    ${actionBtnHtml}
                 </div>
             </div>
         `;
@@ -1027,6 +1157,27 @@ safeAddEventListener('layer-satellite-ls', 'change', (e) => {
     if (map.getLayer('satellite_polygons_fill')) map.setLayoutProperty('satellite_polygons_fill', 'visibility', visibility);
     if (map.getLayer('satellite_polygons_line')) map.setLayoutProperty('satellite_polygons_line', 'visibility', visibility);
     if (map.getLayer('satellite_points')) map.setLayoutProperty('satellite_points', 'visibility', visibility);
+});
+
+function setDroneSurveysVisibility(visible) {
+    if (visible && !window.droneSurveysLoaded) window.loadDroneSurveys();
+    const visibility = visible ? 'visible' : 'none';
+    if (map.getLayer('drone_surveys_glow')) map.setLayoutProperty('drone_surveys_glow', 'visibility', visibility);
+    if (map.getLayer('drone_surveys_points')) map.setLayoutProperty('drone_surveys_points', 'visibility', visibility);
+
+    const chk1 = document.getElementById('layer-drone-surveys');
+    const chk2 = document.getElementById('legend-toggle-drone');
+    if (chk1 && chk1.checked !== visible) chk1.checked = visible;
+    if (chk2 && chk2.checked !== visible) chk2.checked = visible;
+    if (typeof updateLegend === 'function') updateLegend();
+}
+
+safeAddEventListener('layer-drone-surveys', 'change', (e) => {
+    setDroneSurveysVisibility(e.target.checked);
+});
+
+safeAddEventListener('legend-toggle-drone', 'change', (e) => {
+    setDroneSurveysVisibility(e.target.checked);
 });
 
 
@@ -2173,13 +2324,15 @@ function updateLegend() {
     if (document.getElementById('leg-item-tiz')) document.getElementById('leg-item-tiz').style.display = showTiz ? 'flex' : 'none';
 
     // Context Group
+    const showDrone = document.getElementById('layer-drone-surveys') ? document.getElementById('layer-drone-surveys').checked : false;
     const showArg = document.getElementById('layer-arg-locations') ? document.getElementById('layer-arg-locations').checked : false;
     const showThiessen = document.getElementById('layer-arg-thiessen') ? document.getElementById('layer-arg-thiessen').checked : false;
     const showSat = document.getElementById('layer-satellite-ls') ? document.getElementById('layer-satellite-ls').checked : false;
-    const showContextGroup = showArg || showThiessen || showSat;
+    const showContextGroup = showDrone || showArg || showThiessen || showSat;
     
     const ctxSec = document.getElementById('legend-section-context');
     if (ctxSec) ctxSec.style.display = showContextGroup ? 'block' : 'none';
+    if (document.getElementById('leg-item-drone')) document.getElementById('leg-item-drone').style.display = showDrone ? 'flex' : 'none';
     if (document.getElementById('leg-item-arg')) document.getElementById('leg-item-arg').style.display = showArg ? 'flex' : 'none';
     if (document.getElementById('leg-item-thiessen')) document.getElementById('leg-item-thiessen').style.display = showThiessen ? 'flex' : 'none';
     if (document.getElementById('leg-item-satellite')) document.getElementById('leg-item-satellite').style.display = showSat ? 'inline-block' : 'none';
@@ -2280,7 +2433,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v68'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v71'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2421,7 +2574,7 @@ async function loadDashboardAndSearchData() {
 
     try {
         // Fetch summary.json with cache validation instead of cache: no-store
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v68';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v71';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'no-cache' });
         if (res.ok) {
             const freshStats = await res.json();
@@ -3087,6 +3240,7 @@ function applyAdvancedFilters() {
 (function() {
     const lazyLayers = [
         { toggleId: 'layer-inspection',    loaderFn: () => window.loadInspection && window.loadInspection(),     layerId: 'inspection_points' },
+        { toggleId: 'layer-drone-surveys', loaderFn: () => window.loadDroneSurveys && window.loadDroneSurveys(), layerId: 'drone_surveys_points' },
         { toggleId: 'layer-arg-locations', loaderFn: () => window.loadARGLayers && window.loadARGLayers(),       layerId: 'arg_locations_points' },
         { toggleId: 'layer-arg-thiessen',  loaderFn: () => window.loadARGLayers && window.loadARGLayers(),       layerId: 'arg_thiessen_fill' },
         { toggleId: 'layer-tiz',           loaderFn: () => window.loadTizzones && window.loadTizzones(),         layerId: 'tiz_zones_fill' },
