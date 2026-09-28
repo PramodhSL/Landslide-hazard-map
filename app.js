@@ -22,6 +22,12 @@ let _cacheBuiltForFilter = null; // tracks which filter state the cache was buil
 // (DOM lookup is O(n) on the whole tree; caching gives ~13 fewer queries per moveend event)
 const DOM = {};
 document.addEventListener('DOMContentLoaded', () => {
+    // Title badge: ensure it always dynamically matches APP_VERSION
+    const appBadge = document.querySelector('.app-title-badge');
+    if (appBadge && typeof APP_VERSION !== 'undefined') {
+        appBadge.textContent = `Sri Lanka • ${APP_VERSION}`;
+    }
+
     // Dashboard KPI counters
     DOM.kpiTotal    = document.getElementById('kpi-total');
     DOM.kpiMapped   = document.getElementById('kpi-mapped');
@@ -478,6 +484,9 @@ map.on('load', () => {
         if (window.argLayersLoaded) return;
         window.argLayersLoaded = true;
 
+        const thiessenVisible = (DOM.layerThiess || document.getElementById('layer-arg-thiessen'))?.checked ? 'visible' : 'none';
+        const locationsVisible = (DOM.layerArg || document.getElementById('layer-arg-locations'))?.checked ? 'visible' : 'none';
+
         // Thiessen Polygons Source & Layer
         map.addSource('arg_thiessen', {
             type: 'geojson',
@@ -492,7 +501,7 @@ map.on('load', () => {
                 'fill-opacity': 0.35, 
                 'fill-outline-color': '#1e293b'
             },
-            'layout': { 'visibility': 'visible' }
+            'layout': { 'visibility': thiessenVisible }
         }, 'z-index-4-zones'); 
 
         // Create a square icon for rain gauges (distinct from Inspection circles)
@@ -507,7 +516,9 @@ map.on('load', () => {
         sqCtx.lineWidth = 2;
         sqCtx.strokeRect(1, 1, sqSize - 2, sqSize - 2);
         const sqImgData = sqCtx.getImageData(0, 0, sqSize, sqSize);
-        map.addImage('square-marker', { width: sqSize, height: sqSize, data: new Uint8Array(sqImgData.data.buffer) });
+        if (!map.hasImage('square-marker')) {
+            map.addImage('square-marker', { width: sqSize, height: sqSize, data: new Uint8Array(sqImgData.data.buffer) });
+        }
 
         // Point Locations Source & Layer (Symbol with square icon)
         map.addSource('arg_locations', {
@@ -521,7 +532,7 @@ map.on('load', () => {
                 'icon-image': 'square-marker',
                 'icon-size': 1,
                 'icon-allow-overlap': true,
-                'visibility': 'visible'
+                'visibility': locationsVisible
             }
         }, 'z-index-6-top');
         attachLayerHover('arg_locations_points'); // IMP 5 FIX
@@ -1232,13 +1243,21 @@ if (tiz50kToggleBtn) {
 }
 
 safeAddEventListener('layer-arg-locations', 'change', (e) => {
-    if (e.target.checked && !window.argLayersLoaded) window.loadARGLayers();
-    if (map.getLayer('arg_locations_points')) map.setLayoutProperty('arg_locations_points', 'visibility', e.target.checked ? 'visible' : 'none');
+    if (e.target.checked && !window.argLayersLoaded) {
+        window.loadARGLayers();
+    } else if (map.getLayer('arg_locations_points')) {
+        map.setLayoutProperty('arg_locations_points', 'visibility', e.target.checked ? 'visible' : 'none');
+    }
+    if (typeof updateLegend === 'function') updateLegend();
 });
 
 safeAddEventListener('layer-arg-thiessen', 'change', (e) => {
-    if (e.target.checked && !window.argLayersLoaded) window.loadARGLayers();
-    if (map.getLayer('arg_thiessen_fill')) map.setLayoutProperty('arg_thiessen_fill', 'visibility', e.target.checked ? 'visible' : 'none');
+    if (e.target.checked && !window.argLayersLoaded) {
+        window.loadARGLayers();
+    } else if (map.getLayer('arg_thiessen_fill')) {
+        map.setLayoutProperty('arg_thiessen_fill', 'visibility', e.target.checked ? 'visible' : 'none');
+    }
+    if (typeof updateLegend === 'function') updateLegend();
 });
 
 safeAddEventListener('layer-satellite-ls', 'change', (e) => {
@@ -2687,7 +2706,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v72'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v73'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2829,7 +2848,7 @@ async function loadDashboardAndSearchData() {
     try {
         // PERF-MOB-3: Use default browser cache (IDB version-stamp already handles staleness detection).
         // cache:'no-cache' was forcing a full network revalidation on every single page load.
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v72';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v73';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'default' });
         if (res.ok) {
             const freshStats = await res.json();
