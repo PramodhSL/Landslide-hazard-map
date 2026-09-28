@@ -42,6 +42,37 @@ document.addEventListener('DOMContentLoaded', () => {
     DOM.dsdSelect   = document.getElementById('query-dsd');
     DOM.riskSelect  = document.getElementById('query-risk');
     DOM.natSelect   = document.getElementById('query-nature');
+    // Viewport stats elements (cached to eliminate per-moveend DOM queries)
+    DOM.hrBanner    = document.getElementById('hr-alert-banner');
+    DOM.hrText      = document.getElementById('hr-alert-text');
+    DOM.msStrip     = document.getElementById('mobile-stats-strip');
+    DOM.msTotal     = document.getElementById('ms-total');
+    DOM.msHr        = document.getElementById('ms-hr');
+    DOM.msView      = document.getElementById('ms-view');
+    // Layer checkboxes
+    DOM.layer10k    = document.getElementById('layer-10k');
+    DOM.layer50k    = document.getElementById('layer-50k');
+    DOM.layerInsp   = document.getElementById('layer-inspection');
+    DOM.layerTiz10k = document.getElementById('layer-tiz');
+    DOM.layerTiz50k = document.getElementById('layer-tiz-50k');
+    DOM.layerDrone  = document.getElementById('layer-drone-surveys');
+    DOM.layerArg    = document.getElementById('layer-arg-locations');
+    DOM.layerThiess = document.getElementById('layer-arg-thiessen');
+    DOM.layerSat    = document.getElementById('layer-satellite-ls');
+    DOM.layerCont   = document.getElementById('layer-contours');
+    // Legend sections & dividers
+    DOM.legendContainer = document.getElementById('legend');
+    DOM.legendHazard    = document.getElementById('legend-section-hazard');
+    DOM.legBaseHazard   = document.getElementById('leg-item-base-hazard');
+    DOM.legTiz          = document.getElementById('leg-item-tiz');
+    DOM.legendContext   = document.getElementById('legend-section-context');
+    DOM.legDrone        = document.getElementById('leg-item-drone');
+    DOM.legArg          = document.getElementById('leg-item-arg');
+    DOM.legThiessen     = document.getElementById('leg-item-thiessen');
+    DOM.legSat          = document.getElementById('leg-item-satellite');
+    DOM.legendInsp      = document.getElementById('legend-section-inspection');
+    DOM.legDivider1     = document.getElementById('legend-divider-1');
+    DOM.legDivider2     = document.getElementById('legend-divider-2');
 });
 
 
@@ -155,7 +186,8 @@ map.on('load', () => {
         url: `pmtiles://${DATA_BASE_URL}/LHMP_50000.pmtiles`,
         attribution: 'NBRO',
         minzoom: 7,
-        maxzoom: 24
+        maxzoom: 15 // LAYER-FIX-1: PMTiles only has tiles up to z15; setting maxzoom=15 makes MapLibre
+                    // overzoom from z15 tiles at higher zooms instead of requesting missing tiles (→ blank)
     });
 
     updateProgress(60, 'Initializing layer system...');
@@ -216,7 +248,7 @@ map.on('load', () => {
                 url: `pmtiles://${DATA_BASE_URL}/LHZM_10000.pmtiles`,
                 attribution: 'NBRO',
                 minzoom: 12,
-                maxzoom: 24
+                maxzoom: 15 // LAYER-FIX-1: Same as 50k — overzoom from z15 at higher zoom levels
             });
 
             map.addLayer({
@@ -238,9 +270,18 @@ map.on('load', () => {
     }
 
     // Auto-load 1:10k when zoomed in (zoom level 12+) — B6 FIX: fast inline flag check before getZoom()
+    // UX-ZOOM-HINT: Smart layer zoom hint banner manager for all constrained layers
     map.on('zoom', () => {
-        if (!window.hazard10kLoaded && map.getZoom() >= 12) {
+        const z = map.getZoom();
+
+        // 1. Auto-load 10k layer
+        if (!window.hazard10kLoaded && z >= 12) {
             window.loadHazard10k();
+        }
+
+        // 2. Check and update zoom hints for active layers
+        if (typeof checkLayerZoomHints === 'function') {
+            checkLayerZoomHints();
         }
     });
 
@@ -254,17 +295,26 @@ map.on('load', () => {
 
         map.addSource('inspection_reports', {
             type: 'vector',
-            url: `pmtiles://${DATA_BASE_URL}/inspection_reports.pmtiles`
+            url: `pmtiles://${DATA_BASE_URL}/inspection_reports.pmtiles`,
+            maxzoom: 14 // LAYER-FIX-2: Tile data ends at z14; overzoom from z14 beyond that
         });
 
         // Inspection Report Points (Individual dots via PMTiles vector stream)
+        // DESKTOP: show from zoom 7 so full island view works for presentations
+        // MOBILE:  minzoom:9 guards GPU from rendering 9k+ invisible dots at island zoom
+        const isDesktop = window.innerWidth >= 1024;
         map.addLayer({
             'id': 'inspection_points',
             'type': 'circle',
             'source': 'inspection_reports',
             'source-layer': 'inspection_reports',
+            ...(isDesktop ? {} : { 'minzoom': 9 }), // mobile-only zoom guard
             'paint': {
-                'circle-radius': 6, 
+                // Desktop: starts at 3px at z7, grows to 7px at z16
+                // Mobile:  starts at 4px at z9 (first visible zoom)
+                'circle-radius': isDesktop
+                    ? ['interpolate', ['linear'], ['zoom'], 7, 3, 10, 4.5, 14, 6, 16, 7]
+                    : ['interpolate', ['linear'], ['zoom'], 9, 4, 12, 5.5, 16, 7],
                 'circle-color': [
                     'case',
                     /* ================= PRIORITY 1 ================= */
@@ -327,6 +377,31 @@ map.on('load', () => {
         }, 'z-index-6-top'); // Top shelf
         // Click & cursor handlers are managed by the unified canvas click listener
         attachLayerHover('inspection_points'); // IMP 5 FIX: attach hover immediately after layer is added
+
+        // Setup orientation / resize listener to update inspection layer dynamically without page refresh
+        if (!window._orientationListenerAttached && window.matchMedia) {
+            window._orientationListenerAttached = true;
+            const mql = window.matchMedia('(min-width: 1024px)');
+            const handleMediaChange = (e) => {
+                if (!map || !map.getLayer('inspection_points')) return;
+                const desktop = e.matches;
+                try {
+                    map.setLayerZoomRange('inspection_points', desktop ? 7 : 9, 24);
+                    map.setPaintProperty('inspection_points', 'circle-radius', desktop
+                        ? ['interpolate', ['linear'], ['zoom'], 7, 3, 10, 4.5, 14, 6, 16, 7]
+                        : ['interpolate', ['linear'], ['zoom'], 9, 4, 12, 5.5, 16, 7]
+                    );
+                } catch (err) {
+                    console.warn('Could not update inspection zoom range on resize:', err);
+                }
+                if (typeof checkLayerZoomHints === 'function') checkLayerZoomHints();
+            };
+            if (mql.addEventListener) {
+                mql.addEventListener('change', handleMediaChange);
+            } else if (mql.addListener) {
+                mql.addListener(handleMediaChange);
+            }
+        }
     };
 
     // 2. TOTAL IMPACT ZONE (TIZ) — 1:10,000
@@ -337,7 +412,9 @@ map.on('load', () => {
 
         map.addSource('tiz_zones', {
             type: 'vector',
-            url: `pmtiles://${DATA_BASE_URL}/tiz_10k.pmtiles`
+            url: `pmtiles://${DATA_BASE_URL}/tiz_10k.pmtiles`,
+            minzoom: 12,
+            maxzoom: 14 // LAYER-FIX-3: PMTiles data ends at z14; overzoom from z14 at higher zooms
         });
 
         map.addLayer({
@@ -370,7 +447,8 @@ map.on('load', () => {
 
         map.addSource('tiz_zones_50k', {
             type: 'vector',
-            url: `pmtiles://${DATA_BASE_URL}/tiz_50k.pmtiles`
+            url: `pmtiles://${DATA_BASE_URL}/tiz_50k.pmtiles`,
+            maxzoom: 14 // LAYER-FIX-3: PMTiles data ends at z14; overzoom from z14 at higher zooms
         });
 
         map.addLayer({
@@ -461,7 +539,9 @@ map.on('load', () => {
         map.addSource('contours', {
             type: 'vector',
             url: `pmtiles://${DATA_BASE_URL}/Contour_20M.pmtiles`,
-            attribution: 'NBRO'
+            attribution: 'NBRO',
+            minzoom: 11,
+            maxzoom: 12 // LAYER-FIX-4: PMTiles data ends at z12; overzoom beyond z12 to prevent vanishing at z13+
         });
 
         map.addLayer({
@@ -485,7 +565,9 @@ map.on('load', () => {
         map.addSource('satellite_landslides', {
             type: 'vector',
             url: `pmtiles://${DATA_BASE_URL}/satellite_landslides.pmtiles`,
-            attribution: 'Human Settlement & Planning Division'
+            attribution: 'Human Settlement & Planning Division',
+            minzoom: 7,
+            maxzoom: 18
         });
 
         // 1. Semi-transparent Orange Polygon Fill
@@ -586,8 +668,16 @@ map.on('load', () => {
     };
 
 
-    // Fetch summary.json and search_index.json
-    loadDashboardAndSearchData();
+    // PERF-MOB-1: Defer dashboard/search fetch until AFTER the map renders its first frame.
+    // This prevents summary.json + search_index.json (~1MB) from racing with initial PMTiles tile requests.
+    map.once('idle', () => {
+        // Use requestIdleCallback on mobile when available, else small timeout
+        if (window.requestIdleCallback) {
+            requestIdleCallback(() => loadDashboardAndSearchData(), { timeout: 3000 });
+        } else {
+            setTimeout(() => loadDashboardAndSearchData(), 600);
+        }
+    });
 
     // Smart unified canvas click listener that prioritizes point features (inspection points) over background polygons
     map.on('click', (e) => {
@@ -1244,7 +1334,8 @@ function ensureLayersLoaded(layers, callback) {
                 tiles:
                     ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
                 tileSize: 256,
-                attribution: 'Tiles &copy; Esri'
+                attribution: 'Tiles &copy; Esri',
+                maxzoom: 19
             },
             layer: {
                 id: 'hybrid-labels',
@@ -1315,11 +1406,13 @@ document.querySelectorAll('.basemap-card').forEach(card => {
 
 
 
-document.getElementById('locate-btn').addEventListener('click', () => {
-    if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        showToast("Geo-Location requires HTTPS.", 'error');
-        return;
-    }
+const locateBtnGlobal = document.getElementById('locate-btn');
+if (locateBtnGlobal) {
+    locateBtnGlobal.addEventListener('click', () => {
+        if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            showToast("Geo-Location requires HTTPS.", 'error');
+            return;
+        }
 
 
     if ("geolocation" in navigator) {
@@ -1444,7 +1537,8 @@ document.getElementById('locate-btn').addEventListener('click', () => {
     } else {
         showToast('Geolocation is not supported by your browser', 'error');
     }
-});
+    });
+}
 
 // Search functionality with local autocompletion & web fallback
 searchInput = document.getElementById('search-input');
@@ -2310,49 +2404,53 @@ if ('serviceWorker' in navigator) {
 // =============================================
 function updateLegend() {
     // Hazard Group
-    const show10k = document.getElementById('layer-10k') ? document.getElementById('layer-10k').checked : false;
-    const show50k = document.getElementById('layer-50k') ? document.getElementById('layer-50k').checked : false;
+    const show10k = (DOM.layer10k || document.getElementById('layer-10k'))?.checked || false;
+    const show50k = (DOM.layer50k || document.getElementById('layer-50k'))?.checked || false;
     const showBaseHazard = show10k || show50k;
-    const showTiz10k = document.getElementById('layer-tiz') ? document.getElementById('layer-tiz').checked : false;
-    const showTiz50k = document.getElementById('layer-tiz-50k') ? document.getElementById('layer-tiz-50k').checked : false;
+    const showTiz10k = (DOM.layerTiz10k || document.getElementById('layer-tiz'))?.checked || false;
+    const showTiz50k = (DOM.layerTiz50k || document.getElementById('layer-tiz-50k'))?.checked || false;
     const showTiz = showTiz10k || showTiz50k;
     const showHazardGroup = showBaseHazard || showTiz;
     
-    const hazSec = document.getElementById('legend-section-hazard');
+    const hazSec = DOM.legendHazard || document.getElementById('legend-section-hazard');
     if (hazSec) hazSec.style.display = showHazardGroup ? 'block' : 'none';
-    if (document.getElementById('leg-item-base-hazard')) document.getElementById('leg-item-base-hazard').style.display = showBaseHazard ? 'block' : 'none';
-    if (document.getElementById('leg-item-tiz')) document.getElementById('leg-item-tiz').style.display = showTiz ? 'flex' : 'none';
+    const legBase = DOM.legBaseHazard || document.getElementById('leg-item-base-hazard');
+    if (legBase) legBase.style.display = showBaseHazard ? 'block' : 'none';
+    const legTiz = DOM.legTiz || document.getElementById('leg-item-tiz');
+    if (legTiz) legTiz.style.display = showTiz ? 'flex' : 'none';
 
     // Context Group
-    const showDrone = document.getElementById('layer-drone-surveys') ? document.getElementById('layer-drone-surveys').checked : false;
-    const showArg = document.getElementById('layer-arg-locations') ? document.getElementById('layer-arg-locations').checked : false;
-    const showThiessen = document.getElementById('layer-arg-thiessen') ? document.getElementById('layer-arg-thiessen').checked : false;
-    const showSat = document.getElementById('layer-satellite-ls') ? document.getElementById('layer-satellite-ls').checked : false;
+    const showDrone = (DOM.layerDrone || document.getElementById('layer-drone-surveys'))?.checked || false;
+    const showArg = (DOM.layerArg || document.getElementById('layer-arg-locations'))?.checked || false;
+    const showThiessen = (DOM.layerThiess || document.getElementById('layer-arg-thiessen'))?.checked || false;
+    const showSat = (DOM.layerSat || document.getElementById('layer-satellite-ls'))?.checked || false;
     const showContextGroup = showDrone || showArg || showThiessen || showSat;
     
-    const ctxSec = document.getElementById('legend-section-context');
+    const ctxSec = DOM.legendContext || document.getElementById('legend-section-context');
     if (ctxSec) ctxSec.style.display = showContextGroup ? 'block' : 'none';
-    if (document.getElementById('leg-item-drone')) document.getElementById('leg-item-drone').style.display = showDrone ? 'flex' : 'none';
-    if (document.getElementById('leg-item-arg')) document.getElementById('leg-item-arg').style.display = showArg ? 'flex' : 'none';
-    if (document.getElementById('leg-item-thiessen')) document.getElementById('leg-item-thiessen').style.display = showThiessen ? 'flex' : 'none';
-    if (document.getElementById('leg-item-satellite')) document.getElementById('leg-item-satellite').style.display = showSat ? 'inline-block' : 'none';
+    const legDrone = DOM.legDrone || document.getElementById('leg-item-drone');
+    if (legDrone) legDrone.style.display = showDrone ? 'flex' : 'none';
+    const legArg = DOM.legArg || document.getElementById('leg-item-arg');
+    if (legArg) legArg.style.display = showArg ? 'flex' : 'none';
+    const legThiessen = DOM.legThiessen || document.getElementById('leg-item-thiessen');
+    if (legThiessen) legThiessen.style.display = showThiessen ? 'flex' : 'none';
+    const legSat = DOM.legSat || document.getElementById('leg-item-satellite');
+    if (legSat) legSat.style.display = showSat ? 'inline-block' : 'none';
 
     // Inspection Group
-    const showInsp = document.getElementById('layer-inspection') ? document.getElementById('layer-inspection').checked : false;
-    const inspSec = document.getElementById('legend-section-inspection');
+    const showInsp = (DOM.layerInsp || document.getElementById('layer-inspection'))?.checked || false;
+    const inspSec = DOM.legendInsp || document.getElementById('legend-section-inspection');
     if (inspSec) inspSec.style.display = showInsp ? 'block' : 'none';
 
     // Dividers
-    if (document.getElementById('legend-divider-1')) {
-        document.getElementById('legend-divider-1').style.display = (showHazardGroup && (showContextGroup || showInsp)) ? 'block' : 'none';
-    }
-    if (document.getElementById('legend-divider-2')) {
-        document.getElementById('legend-divider-2').style.display = (showContextGroup && showInsp) ? 'block' : 'none';
-    }
+    const div1 = DOM.legDivider1 || document.getElementById('legend-divider-1');
+    if (div1) div1.style.display = (showHazardGroup && (showContextGroup || showInsp)) ? 'block' : 'none';
+    const div2 = DOM.legDivider2 || document.getElementById('legend-divider-2');
+    if (div2) div2.style.display = (showContextGroup && showInsp) ? 'block' : 'none';
 
     // Hide entire legend container if all sections are hidden
     const anyVisible = showHazardGroup || showContextGroup || showInsp;
-    const legendContainer = document.getElementById('legend');
+    const legendContainer = DOM.legendContainer || document.getElementById('legend');
     if (legendContainer) {
         if (!legendContainer.classList.contains('collapsed')) {
             legendContainer.style.display = anyVisible ? 'flex' : 'none';
@@ -2363,10 +2461,15 @@ function updateLegend() {
     }
 }
 
-// Global listener for legend toggle
+// Global listener for legend toggle & smart zoom hints
 document.addEventListener('change', (e) => {
     if (e.target && e.target.type === 'checkbox' && e.target.id && e.target.id.startsWith('layer-')) {
         updateLegend();
+        // Reset manual dismiss for this layer when user explicitly toggles it
+        if (_dismissedZoomHintId === e.target.id) {
+            _dismissedZoomHintId = null;
+        }
+        checkLayerZoomHints();
     }
 });
 
@@ -2398,6 +2501,157 @@ function dismissToast() {
     if (toast) { toast.style.opacity = '0'; toast.style.transform = 'translate(-50%,-50%) scale(0.9)'; }
     if (window.toastTimeout) { clearTimeout(window.toastTimeout); window.toastTimeout = null; }
 }
+
+// =============================================
+// UNIVERSAL SMART LAYER ZOOM HINT BANNER
+// Informs users when an enabled layer requires
+// a closer zoom level to be visible (e.g. 1:10k
+// hazard, 1:10k TIZ, 20m Contours, Inspection).
+// Provides an instant 1-tap "Zoom In" button and
+// auto-dismisses smoothly when zoomed in.
+// =============================================
+const ZOOM_HINT_RULES = [
+    {
+        id: 'layer-10k',
+        name: '1:10k Hazard Map',
+        minZoom: 12,
+        targetZoom: 12.5,
+        msg: '1:10k Hazard Map visible at <strong>Zoom 12+</strong>'
+    },
+    {
+        id: 'layer-tiz',
+        name: '1:10k Impact Zones',
+        minZoom: 12,
+        targetZoom: 12.5,
+        msg: '1:10k Impact Zones visible at <strong>Zoom 12+</strong>'
+    },
+    {
+        id: 'layer-contours',
+        name: '20m Contours',
+        minZoom: 11,
+        targetZoom: 11.5,
+        msg: '20m Contours visible at <strong>Zoom 11+</strong>'
+    },
+    {
+        id: 'layer-inspection',
+        name: 'Inspection Points',
+        minZoom: 9,
+        targetZoom: 10,
+        mobileOnly: true,
+        msg: 'Inspection points visible at <strong>Zoom 9+</strong>'
+    }
+];
+
+let _activeZoomHintRule = null;
+let _dismissedZoomHintId = null;
+
+function checkLayerZoomHints() {
+    if (typeof map === 'undefined' || !map) return;
+    const currentZoom = map.getZoom();
+    const isDesktop = window.innerWidth >= 1024;
+
+    // Find highest-detail active layer that is currently below minZoom
+    let candidate = null;
+    for (const rule of ZOOM_HINT_RULES) {
+        if (rule.mobileOnly && isDesktop) continue;
+        const cb = document.getElementById(rule.id);
+        if (cb && cb.checked && currentZoom < rule.minZoom) {
+            // Respect user dismiss unless they re-toggle the checkbox
+            if (_dismissedZoomHintId === rule.id) continue;
+            if (!candidate || rule.minZoom > candidate.minZoom) {
+                candidate = rule;
+            }
+        }
+    }
+
+    if (candidate) {
+        showLayerZoomHint(candidate);
+    } else {
+        dismissLayerZoomHint();
+    }
+}
+
+function showLayerZoomHint(rule) {
+    _activeZoomHintRule = rule;
+    let hint = document.getElementById('inspection-zoom-hint');
+    if (!hint) {
+        hint = document.createElement('div');
+        hint.id = 'inspection-zoom-hint';
+        hint.style.cssText = [
+            'position:fixed',
+            'bottom:80px',
+            'left:50%',
+            'transform:translateX(-50%) translateY(20px)',
+            'background:rgba(15,23,42,0.95)',
+            'backdrop-filter:blur(12px)',
+            '-webkit-backdrop-filter:blur(12px)',
+            'color:#e2e8f0',
+            'padding:10px 16px',
+            'border-radius:40px',
+            'z-index:9990',
+            'box-shadow:0 4px 20px rgba(0,0,0,0.5)',
+            'border:1px solid rgba(139,92,246,0.5)',
+            'display:flex',
+            'align-items:center',
+            'gap:10px',
+            'font-size:0.8rem',
+            'font-weight:500',
+            'pointer-events:auto',
+            'transition:opacity 0.35s ease, transform 0.35s ease',
+            'opacity:0',
+            'white-space:nowrap',
+            'max-width:90vw'
+        ].join(';');
+        document.body.appendChild(hint);
+    }
+
+    hint.innerHTML =
+        '<span style="font-size:1rem;">🔍</span>' +
+        `<span>${rule.msg} &nbsp;—&nbsp; currently too far out</span>` +
+        '<button id="inspection-hint-zoom-btn" style="' +
+            'background:linear-gradient(135deg,#8b5cf6,#06b6d4);' +
+            'border:none;border-radius:20px;color:#fff;' +
+            'padding:4px 12px;cursor:pointer;font-size:0.78rem;' +
+            'font-weight:600;flex-shrink:0;' +
+        '">Zoom In</button>' +
+        '<button id="inspection-hint-close-btn" style="' +
+            'background:none;border:none;color:#94a3b8;' +
+            'cursor:pointer;padding:2px 4px;font-size:1rem;flex-shrink:0;' +
+        '" title="Dismiss">×</button>';
+
+    requestAnimationFrame(() => {
+        hint.style.opacity = '1';
+        hint.style.transform = 'translateX(-50%) translateY(0)';
+    });
+
+    const zoomBtn = document.getElementById('inspection-hint-zoom-btn');
+    if (zoomBtn) {
+        zoomBtn.onclick = () => {
+            map.easeTo({ zoom: rule.targetZoom, duration: 900 });
+        };
+    }
+
+    const closeBtn = document.getElementById('inspection-hint-close-btn');
+    if (closeBtn) {
+        closeBtn.onclick = () => {
+            _dismissedZoomHintId = rule.id;
+            dismissLayerZoomHint();
+        };
+    }
+}
+
+function dismissLayerZoomHint() {
+    _activeZoomHintRule = null;
+    const hint = document.getElementById('inspection-zoom-hint');
+    if (!hint) return;
+    hint.style.opacity = '0';
+    hint.style.transform = 'translateX(-50%) translateY(20px)';
+    setTimeout(() => { if (hint.parentNode) hint.parentNode.removeChild(hint); }, 400);
+}
+
+// Backward-compatible aliases for existing callers
+function showInspectionZoomHint() { checkLayerZoomHints(); }
+function dismissInspectionZoomHint() { dismissLayerZoomHint(); }
 
 
 
@@ -2433,7 +2687,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v71'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v72'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2573,9 +2827,10 @@ async function loadDashboardAndSearchData() {
     }
 
     try {
-        // Fetch summary.json with cache validation instead of cache: no-store
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v71';
-        const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'no-cache' });
+        // PERF-MOB-3: Use default browser cache (IDB version-stamp already handles staleness detection).
+        // cache:'no-cache' was forcing a full network revalidation on every single page load.
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v72';
+        const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'default' });
         if (res.ok) {
             const freshStats = await res.json();
             summaryStats = freshStats;
@@ -2767,8 +3022,8 @@ function updateViewportStats() {
     animateKpi(kpiLr,     lrInView);
 
     // F3: High-Risk Priority-1 Alert Banner
-    const hrBanner = document.getElementById('hr-alert-banner');
-    const hrText   = document.getElementById('hr-alert-text');
+    const hrBanner = DOM.hrBanner || document.getElementById('hr-alert-banner');
+    const hrText   = DOM.hrText   || document.getElementById('hr-alert-text');
     const inspLayerVisible = map.getLayer('inspection_points') && map.getLayoutProperty('inspection_points', 'visibility') === 'visible';
     if (hrBanner) {
         if (inspLayerVisible && hrP1InView > 0) {
@@ -2780,10 +3035,10 @@ function updateViewportStats() {
     }
 
     // F7: Mobile Bottom Stats Strip
-    const msStrip = document.getElementById('mobile-stats-strip');
-    const msTotal = document.getElementById('ms-total');
-    const msHr    = document.getElementById('ms-hr');
-    const msView  = document.getElementById('ms-view');
+    const msStrip = DOM.msStrip || document.getElementById('mobile-stats-strip');
+    const msTotal = DOM.msTotal || document.getElementById('ms-total');
+    const msHr    = DOM.msHr    || document.getElementById('ms-hr');
+    const msView  = DOM.msView  || document.getElementById('ms-view');
     if (msStrip) {
         if (inspLayerVisible) {
             msStrip.style.display = 'flex';
@@ -2862,10 +3117,12 @@ function updateViewportStats() {
 }
 
 // Register map viewport moveend listener for statistics (debounced for performance)
+// PERF-MOB-4: Use longer debounce on mobile (saves CPU from rapid touch-pan events)
+const _moveEndDebounceMs = window.innerWidth <= 768 ? 450 : 250;
 let _moveEndTimer;
 map.on('moveend', () => {
     clearTimeout(_moveEndTimer);
-    _moveEndTimer = setTimeout(updateViewportStats, 250);
+    _moveEndTimer = setTimeout(updateViewportStats, _moveEndDebounceMs);
 });
 
 

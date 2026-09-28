@@ -5,7 +5,7 @@
     <script>
         // Force aggressive cache purge for returning users (safe against mobile storage restriction loops)
         // ⚠️ DEPLOY-1: When bumping version, also update CACHE_NAME in sw.js and style.css?v= in index.html
-        const APP_VERSION = "v71";
+        const APP_VERSION = "v72";
         try {
             if (localStorage.getItem('lhmpVersion') !== APP_VERSION && !window.location.search.includes('update=')) {
                 localStorage.setItem('lhmpVersion', APP_VERSION);
@@ -37,12 +37,17 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev" crossorigin>
     <link rel="preconnect" href="https://unpkg.com" crossorigin>
+    <!-- PERF-MOB-5: Preload critical scripts & styles so browser downloads them in parallel with HTML parsing -->
+    <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" as="script" crossorigin fetchpriority="high">
+    <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" as="style" crossorigin>
+    <link rel="preload" href="pmtiles.js?v=72" as="script">
+    <link rel="preload" href="app.js?v=72" as="script" fetchpriority="high">
     
     <!-- Google Fonts Async Load (Non-render-blocking, zero SW mismatch) -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" crossorigin />
-    <link href="style.css?v=71" rel="stylesheet" />
+    <link href="style.css?v=72" rel="stylesheet" />
 </head>
 
 <body>
@@ -594,9 +599,10 @@
     </div>
 
     <!-- MapLibre GL from CDN for instant cache hits (fallback: local copy in sw.js) -->
-    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous"></script>
-    <script src="pmtiles.js?v=71"></script><!-- L5 FIX: version-busted for proper cache invalidation -->
-    <script src="app.js?v=71"></script>
+    <!-- PERF-MOB-5: defer allows parallel download, executes in order after DOM parse -->
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous" defer></script>
+    <script src="pmtiles.js?v=72" defer></script><!-- L5 FIX: version-busted for proper cache invalidation -->
+    <script src="app.js?v=72" defer></script>
 </body>
 
 </html>

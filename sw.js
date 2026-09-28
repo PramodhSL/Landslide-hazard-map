@@ -1,5 +1,5 @@
 // ⚠️ DEPLOY-1: When bumping version, also update APP_VERSION in index.html (line 7) and style.css?v= in index.html
-const CACHE_NAME = 'landslide-map-v71';
+const CACHE_NAME = 'landslide-map-v72';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -9,6 +9,7 @@ const ASSETS_TO_CACHE = [
     './icon-192.png',
     './icon-512.png',
     './pmtiles.js'
+    // PERF-MOB-6: summary.json and maplibre-gl.js are served via CDN/network; not cached here to avoid SW mismatch
     // maplibre-gl.js and maplibre-gl.css are served from CDN — not cached here
 ];
 
@@ -42,6 +43,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     // Skip remote PMTiles / Cloudflare R2 fetching completely (don't cache heavy tiles here)
     if (event.request.url.indexOf('.pmtiles') !== -1 || event.request.url.indexOf('r2.dev') !== -1) {
+        return;
+    }
+    
+    // Skip large GeoJSON files (served from Cloudflare R2 with its own CDN caching)
+    if (event.request.url.indexOf('.geojson') !== -1) {
         return;
     }
     
