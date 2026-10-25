@@ -131,12 +131,12 @@ const map = new maplibregl.Map({
         ]
     },
     center: [80.7718, 7.8731],
-    zoom: 8,
+    zoom: window.innerWidth <= 768 ? 6.8 : 7.4,
     maxBounds: [
-        [79.5, 5.9], // Southwest coordinates (Sri Lanka bounds)
-        [82.0, 9.9] // Northeast coordinates
+        [77.0, 4.8], // Southwest coordinates (allows seeing entire island with surrounding sea)
+        [84.5, 11.2] // Northeast coordinates
     ],
-    minZoom: 7,
+    minZoom: 5.5, // Allow zooming out to see all of Sri Lanka in one view
     maxZoom: 18,
     hash: true, // Enable URL hash for sharing map position
     attributionControl: true,
@@ -151,6 +151,33 @@ const map = new maplibregl.Map({
 
 // Add Navigation Control
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-left');
+
+// Fit Entire Sri Lanka in view
+function fitEntireSriLanka() {
+    map.fitBounds([
+        [79.4, 5.8], // SW corner (South/West)
+        [82.0, 9.9]  // NE corner (North/East)
+    ], {
+        padding: window.innerWidth <= 768 ? { top: 60, bottom: 120, left: 20, right: 20 } : 50,
+        duration: 1200
+    });
+}
+window.fitEntireSriLanka = fitEntireSriLanka;
+
+// Append Fit Sri Lanka button to the NavigationControl group
+map.on('load', () => {
+    const navGroup = document.querySelector('.maplibregl-ctrl-bottom-left .maplibregl-ctrl-group');
+    if (navGroup) {
+        const fitBtn = document.createElement('button');
+        fitBtn.className = 'maplibregl-ctrl-icon maplibregl-ctrl-fit-srilanka';
+        fitBtn.type = 'button';
+        fitBtn.title = 'Fit Entire Sri Lanka in View (Reset Zoom)';
+        fitBtn.setAttribute('aria-label', 'Fit Entire Sri Lanka');
+        fitBtn.innerHTML = `<span style="font-size:14px; font-weight:700; display:flex; align-items:center; justify-content:center;">🇱🇰</span>`;
+        fitBtn.addEventListener('click', fitEntireSriLanka);
+        navGroup.appendChild(fitBtn);
+    }
+});
 
 // Add scale control
 map.addControl(new maplibregl.ScaleControl({
@@ -2005,6 +2032,14 @@ closeToolsBtn.addEventListener('click', () => {
     toolsPanel.classList.remove('active');
 });
 
+const fitSriLankaBtn = document.getElementById('fit-srilanka-btn');
+if (fitSriLankaBtn) {
+    fitSriLankaBtn.addEventListener('click', () => {
+        fitEntireSriLanka();
+        toolsPanel.classList.remove('active');
+    });
+}
+
 document.addEventListener('click', (e) => {
     if (toolsPanel.classList.contains('active') && !toolsPanel.contains(e.target) && e.target !== toolsMenuBtn) {
         toolsPanel.classList.remove('active');
@@ -2706,7 +2741,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v73'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v74'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2848,7 +2883,7 @@ async function loadDashboardAndSearchData() {
     try {
         // PERF-MOB-3: Use default browser cache (IDB version-stamp already handles staleness detection).
         // cache:'no-cache' was forcing a full network revalidation on every single page load.
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v73';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v74';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'default' });
         if (res.ok) {
             const freshStats = await res.json();
@@ -3600,15 +3635,15 @@ function applyAdvancedFilters() {
         canvas: null,
         ctx: null,
         imgData: null,
-        width: 256,
-        height: 448,
+        width: 352,
+        height: 496,
         activePopup: null
     };
 
-    // Grid definition for Sri Lanka
-    const BOUNDS = [79.65, 5.85, 81.90, 9.90]; // [West, South, East, North]
-    const ROWS = 28;
-    const COLS = 16;
+    // Grid definition for full Sri Lanka (covers Jaffna, Galle, Colombo, Trincomalee, Batticaloa, Ampara)
+    let BOUNDS = [79.20, 5.60, 82.35, 10.10]; // [West, South, East, North]
+    let ROWS = 31;
+    let COLS = 22;
 
     // Color Scales
     // Hourly Intensity Color Ramp (mm/h)
@@ -3743,6 +3778,9 @@ function applyAdvancedFilters() {
             const row0Offset = r0 * COLS;
             const row1Offset = r1 * COLS;
 
+            // Soft edge fade across 10 pixels to seamlessly merge with ocean
+            const edgeDistY = Math.min(y, h - 1 - y);
+
             for (let x = 0; x < w; x++) {
                 const u = x * colScale;
                 const c0 = Math.floor(u);
@@ -3764,11 +3802,15 @@ function applyAdvancedFilters() {
                     d[pixelIdx + 2] = 0;
                     d[pixelIdx + 3] = 0;
                 } else {
+                    const edgeDistX = Math.min(x, w - 1 - x);
+                    const edgeDist = Math.min(edgeDistX, edgeDistY);
+                    const edgeFade = edgeDist < 10 ? (edgeDist / 10) : 1.0;
+
                     const lutIdx = Math.min(count - 1, Math.round(val / step)) * 4;
                     d[pixelIdx] = lut[lutIdx];
                     d[pixelIdx + 1] = lut[lutIdx + 1];
                     d[pixelIdx + 2] = lut[lutIdx + 2];
-                    d[pixelIdx + 3] = lut[lutIdx + 3];
+                    d[pixelIdx + 3] = Math.round(lut[lutIdx + 3] * edgeFade);
                 }
                 pixelIdx += 4;
             }
@@ -3815,9 +3857,22 @@ function applyAdvancedFilters() {
         }
     }
 
-    // Freshness check: returns true only if forecast is under 6 hours old and has >= 24h future forecast
+    // Freshness check: returns true only if forecast is under 6 hours old, has >= 24h future forecast,
+    // covers the full island bounds, and starts today (not previous days)
     function isDataFresh(data) {
         if (!data || !data.times || !data.frames || data.times.length === 0) return false;
+        // Invalidate older narrow bounds (east < 82.0) so eastern province is never cut off
+        if (data.bounds && data.bounds[2] < 82.0) return false;
+        
+        // Invalidate if data started before today's date in Sri Lanka time (Asia/Colombo UTC+5:30)
+        let todayStr;
+        try {
+            todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(new Date());
+        } catch (_) {
+            todayStr = new Date().toISOString().slice(0, 10);
+        }
+        if (data.times[0] && data.times[0].slice(0, 10) < todayStr) return false;
+
         const nowMs = Date.now();
         const lastTimeMs = new Date(data.times[data.times.length - 1]).getTime();
         // If the forecast ends less than 24 hours into the future, consider it stale
@@ -3905,6 +3960,9 @@ function applyAdvancedFilters() {
         STATE.loading = false;
 
         if (STATE.data) {
+            if (STATE.data.bounds) BOUNDS = STATE.data.bounds;
+            if (STATE.data.rows) ROWS = STATE.data.rows;
+            if (STATE.data.cols) COLS = STATE.data.cols;
             calculateAccumulation();
             STATE.nowIndex = findNowIndex();
             STATE.currentHour = STATE.nowIndex;
@@ -3918,7 +3976,7 @@ function applyAdvancedFilters() {
             renderFrame(STATE.currentHour);
             if (tagInfo) {
                 const isLive = STATE.data.model && STATE.data.model.includes('Direct API');
-                tagInfo.textContent = isLive ? 'ECMWF 9km · Live API' : 'ECMWF IFS 0.1° · 72h';
+                tagInfo.textContent = isLive ? 'ECMWF 9km · Live API' : 'ECMWF IFS 0.1° · 96h';
             }
         }
     }
@@ -3952,7 +4010,7 @@ function applyAdvancedFilters() {
                 lons.push(lon.toFixed(3));
             }
         }
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&hourly=precipitation&models=ecmwf_ifs&timezone=Asia/Colombo&past_days=1&forecast_days=3`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&hourly=precipitation&models=ecmwf_ifs&timezone=Asia/Colombo&forecast_days=4`;
         const res = await fetch(url);
         const json = await res.json();
         const times = json[0].hourly.time;
@@ -3980,7 +4038,15 @@ function applyAdvancedFilters() {
 
         setupCanvas();
 
-        if (!map.getSource('ecmwf-rain-source')) {
+        const src = map.getSource('ecmwf-rain-source');
+        if (src) {
+            src.setCoordinates([
+                [BOUNDS[0], BOUNDS[3]], // Top Left (NW)
+                [BOUNDS[2], BOUNDS[3]], // Top Right (NE)
+                [BOUNDS[2], BOUNDS[1]], // Bottom Right (SE)
+                [BOUNDS[0], BOUNDS[1]]  // Bottom Left (SW)
+            ]);
+        } else {
             map.addSource('ecmwf-rain-source', {
                 type: 'canvas',
                 canvas: 'ecmwf-rain-canvas',
@@ -4121,24 +4187,25 @@ function applyAdvancedFilters() {
         const d1 = document.getElementById('mark-day-1');
         const d2 = document.getElementById('mark-day-2');
         const d3 = document.getElementById('mark-day-3');
+        const d4 = document.getElementById('mark-day-4');
 
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const is96 = STATE.data.times.length === 96;
-        const todayIdx = is96 ? 24 : 0;
-        const tomIdx = is96 ? 48 : 24;
-        const day3Idx = is96 ? 72 : 48;
-
-        if (STATE.data.times[todayIdx] && d1) {
-            const dt1 = new Date(STATE.data.times[todayIdx]);
+        // Index 0 is today, Index 24 is tomorrow, Index 48 is day 3, Index 72 is day 4
+        if (STATE.data.times[0] && d1) {
+            const dt1 = new Date(STATE.data.times[0]);
             d1.textContent = `Today (${days[dt1.getDay()]})`;
         }
-        if (STATE.data.times[tomIdx] && d2) {
-            const dt2 = new Date(STATE.data.times[tomIdx]);
+        if (STATE.data.times[24] && d2) {
+            const dt2 = new Date(STATE.data.times[24]);
             d2.textContent = `Tomorrow (${days[dt2.getDay()]})`;
         }
-        if (STATE.data.times[day3Idx] && d3) {
-            const dt3 = new Date(STATE.data.times[day3Idx]);
+        if (STATE.data.times[48] && d3) {
+            const dt3 = new Date(STATE.data.times[48]);
             d3.textContent = `Day 3 (${days[dt3.getDay()]})`;
+        }
+        if (STATE.data.times[72] && d4) {
+            const dt4 = new Date(STATE.data.times[72]);
+            d4.textContent = `Day 4 (${days[dt4.getDay()]})`;
         }
     }
 

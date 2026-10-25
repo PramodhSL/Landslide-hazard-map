@@ -5,7 +5,7 @@
     <script>
         // Force aggressive cache purge for returning users (safe against mobile storage restriction loops)
         // ⚠️ DEPLOY-1: When bumping version, also update CACHE_NAME in sw.js and style.css?v= in index.html
-        const APP_VERSION = "v73";
+        const APP_VERSION = "v74";
         try {
             if (localStorage.getItem('lhmpVersion') !== APP_VERSION && !window.location.search.includes('update=')) {
                 localStorage.setItem('lhmpVersion', APP_VERSION);
@@ -40,14 +40,14 @@
     <!-- PERF-MOB-5: Preload critical scripts & styles so browser downloads them in parallel with HTML parsing -->
     <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" as="script" crossorigin fetchpriority="high">
     <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" as="style" crossorigin>
-    <link rel="preload" href="pmtiles.js?v=73" as="script">
-    <link rel="preload" href="app.js?v=73" as="script" fetchpriority="high">
+    <link rel="preload" href="pmtiles.js?v=74" as="script">
+    <link rel="preload" href="app.js?v=74" as="script" fetchpriority="high">
     
     <!-- Google Fonts Async Load (Non-render-blocking, zero SW mismatch) -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" crossorigin />
-    <link href="style.css?v=73" rel="stylesheet" />
+    <link href="style.css?v=74" rel="stylesheet" />
 </head>
 
 <body>
@@ -75,7 +75,7 @@
             <div class="app-title-bar">
                 <span class="app-title-icon">🏔️</span>
                 <span class="app-title-text">Landslide Hazard Zonation Map</span>
-                <span class="app-title-badge">Sri Lanka • v73</span>
+                <span class="app-title-badge">Sri Lanka • v74</span>
             </div>
             <div class="search-box">
                 <div class="search-input-wrapper">
@@ -409,6 +409,17 @@
             <button id="close-tools-btn" class="close-btn">&times;</button>
         </div>
         <div class="tools-panel-content" id="tools-panel-content">
+            <button id="fit-srilanka-btn" class="tool-menu-item">
+                <span class="tool-icon" style="background: linear-gradient(135deg, #10b981, #059669);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+                        <path d="M2 12h20"></path>
+                    </svg>
+                </span>
+                <span class="tool-label">Fit Entire Sri Lanka</span>
+            </button>
             <button id="view3d-btn" class="tool-menu-item">
                 <span class="tool-icon" style="background: linear-gradient(135deg, #f59e0b, #ef4444);">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -602,7 +613,7 @@
     </div>
 
     <!-- Hidden Offscreen Canvas for ECMWF Bilinear Rainfall Interpolation -->
-    <canvas id="ecmwf-rain-canvas" width="256" height="448" style="display:none;"></canvas>
+    <canvas id="ecmwf-rain-canvas" width="352" height="496" style="display:none;"></canvas>
 
     <!-- Ventusky-Style Floating ECMWF Rain Forecast Timeline Player -->
     <div id="weather-player" class="weather-player hidden" role="region" aria-label="ECMWF Rainfall Forecast Player">
@@ -612,7 +623,7 @@
                 <div class="weather-title-group">
                     <span class="weather-live-indicator"></span>
                     <span class="weather-title">🌧️ ECMWF 9 km Rain Forecast</span>
-                    <span class="weather-tag" id="weather-tag-info">Open Data · 72h</span>
+                    <span class="weather-tag" id="weather-tag-info">Open Data · 96h</span>
                 </div>
                 
                 <div class="weather-mode-pill">
@@ -647,7 +658,7 @@
                     <div class="weather-time-info">
                         <div class="weather-datetime-group">
                             <span class="weather-badge-now" id="weather-step-badge">NOW</span>
-                            <span class="weather-datetime" id="weather-datetime-label">Sun 25 Oct · 17:00</span>
+                            <span class="weather-datetime" id="weather-datetime-label">Sun 25 Oct · 22:00</span>
                             <span class="weather-offset" id="weather-offset-label">(+0h)</span>
                         </div>
                         <div class="weather-stats-group">
@@ -656,11 +667,12 @@
                     </div>
                     
                     <div class="weather-slider-wrap">
-                        <input type="range" id="weather-time-slider" min="0" max="71" value="0" step="1" class="weather-slider">
+                        <input type="range" id="weather-time-slider" min="0" max="95" value="0" step="1" class="weather-slider">
                         <div class="weather-day-markers">
                             <span class="weather-day-mark mark-d1" id="mark-day-1">Today</span>
                             <span class="weather-day-mark mark-d2" id="mark-day-2">Tomorrow</span>
                             <span class="weather-day-mark mark-d3" id="mark-day-3">Day 3</span>
+                            <span class="weather-day-mark mark-d4" id="mark-day-4">Day 4</span>
                         </div>
                     </div>
                 </div>
@@ -679,9 +691,7 @@
                         <span>10</span>
                         <span>20</span>
                         <span>35</span>
-                        <span class="tick-nbro nbro-l1" title="Level 1: Watch (≥75mm)">75mm ⚠️</span>
-                        <span class="tick-nbro nbro-l2" title="Level 2: Alert (≥100mm)">100mm 🚨</span>
-                        <span class="tick-nbro nbro-l3" title="Level 3: Evacuation (≥150mm)">150mm+ 🛑</span>
+                        <span>50+</span>
                     </div>
                 </div>
             </div>
@@ -691,8 +701,8 @@
     <!-- MapLibre GL from CDN for instant cache hits (fallback: local copy in sw.js) -->
     <!-- PERF-MOB-5: defer allows parallel download, executes in order after DOM parse -->
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous" defer></script>
-    <script src="pmtiles.js?v=73" defer></script><!-- L5 FIX: version-busted for proper cache invalidation -->
-    <script src="app.js?v=73" defer></script>
+    <script src="pmtiles.js?v=74" defer></script><!-- L5 FIX: version-busted for proper cache invalidation -->
+    <script src="app.js?v=74" defer></script>
 </body>
 
 </html>
