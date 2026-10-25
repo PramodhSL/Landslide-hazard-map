@@ -2598,7 +2598,7 @@ function showLayerZoomHint(rule) {
         hint.id = 'inspection-zoom-hint';
         hint.style.cssText = [
             'position:fixed',
-            'bottom:80px',
+            'bottom:165px',
             'left:50%',
             'transform:translateX(-50%) translateY(20px)',
             'background:rgba(15,23,42,0.95)',
@@ -3581,3 +3581,854 @@ function applyAdvancedFilters() {
     window.addEventListener('offline', updateOnlineStatus);
     if (!navigator.onLine) updateOnlineStatus();
 })();
+
+// =====================================================
+// ECMWF 9 KM RAINFALL DYNAMIC FORECAST ENGINE
+// =====================================================
+(function initECMWFRainfall() {
+    const STATE = {
+        loaded: false,
+        loading: false,
+        data: null,
+        currentHour: 0,
+        mode: 'rate', // 'rate' (1h mm/h), 'acc3' (3h accumulated mm), or 'acc24' (24h accumulated mm)
+        isPlaying: false,
+        playInterval: null,
+        opacity: 0.75,
+        acc3Frames: null,
+        acc24Frames: null,
+        canvas: null,
+        ctx: null,
+        imgData: null,
+        width: 256,
+        height: 448,
+        activePopup: null
+    };
+
+    // Grid definition for Sri Lanka
+    const BOUNDS = [79.65, 5.85, 81.90, 9.90]; // [West, South, East, North]
+    const ROWS = 28;
+    const COLS = 16;
+
+    // Color Scales
+    // Hourly Intensity Color Ramp (mm/h)
+    const RATE_RAMP = [
+        [0.0,    0,   0,   0,   0],
+        [0.1,   80, 180, 240, 110],
+        [0.5,   50, 160, 240, 140],
+        [1.0,   30, 150, 240, 175],
+        [2.5,   25, 200, 200, 200],
+        [5.0,   50, 215, 120, 220],
+        [10.0, 220, 230,  50, 230],
+        [20.0, 255, 170,   0, 240],
+        [35.0, 245,  60,  40, 250],
+        [50.0, 180,  40, 220, 255],
+        [75.0, 130,   0, 200, 255],
+        [100.0, 255, 100, 220, 255]
+    ];
+
+    // 3-Hour Accumulated Rainfall Color Ramp (mm)
+    const ACC3_RAMP = [
+        [0.0,    0,   0,   0,   0],
+        [0.5,   80, 180, 240, 100],
+        [2.0,   30, 150, 240, 155],
+        [5.0,   25, 200, 200, 190],
+        [10.0,  50, 215, 120, 215],
+        [20.0, 220, 230,  50, 230],
+        [35.0, 255, 170,   0, 240],
+        [50.0, 245,  60,  40, 250],
+        [75.0, 180,  40, 220, 255],
+        [100.0, 255, 100, 220, 255]
+    ];
+
+    // 24-Hour Accumulated Rainfall Color Ramp (mm) - Early Warning Thresholds
+    const ACC24_RAMP = [
+        [0.0,    0,   0,   0,   0],
+        [2.0,   80, 180, 240,  90],
+        [10.0,  30, 150, 240, 150],
+        [25.0,  50, 215, 120, 190],
+        [50.0, 220, 230,  50, 220],
+        [75.0, 255, 170,   0, 245], // Level 1 Watch (75mm)
+        [100.0, 245,  60,  40, 250], // Level 2 Alert (100mm)
+        [150.0, 180,  40, 220, 255], // Level 3 Evacuation (150mm)
+        [200.0, 255, 100, 220, 255]
+    ];
+
+    // Build precomputed LUT for sub-millisecond pixel lookups
+    function buildLUT(ramp, maxVal, step) {
+        const count = Math.ceil(maxVal / step) + 1;
+        const lut = new Uint8ClampedArray(count * 4);
+        for (let i = 0; i < count; i++) {
+            const v = i * step;
+            let r = 0, g = 0, b = 0, a = 0;
+            if (v <= ramp[0][0]) {
+                r = ramp[0][1]; g = ramp[0][2]; b = ramp[0][3]; a = ramp[0][4];
+            } else if (v >= ramp[ramp.length - 1][0]) {
+                const last = ramp[ramp.length - 1];
+                r = last[1]; g = last[2]; b = last[3]; a = last[4];
+            } else {
+                for (let k = 0; k < ramp.length - 1; k++) {
+                    if (v >= ramp[k][0] && v <= ramp[k + 1][0]) {
+                        const t = (v - ramp[k][0]) / (ramp[k + 1][0] - ramp[k][0]);
+                        r = Math.round(ramp[k][1] + t * (ramp[k + 1][1] - ramp[k][1]));
+                        g = Math.round(ramp[k][2] + t * (ramp[k + 1][2] - ramp[k][2]));
+                        b = Math.round(ramp[k][3] + t * (ramp[k + 1][3] - ramp[k][3]));
+                        a = Math.round(ramp[k][4] + t * (ramp[k + 1][4] - ramp[k][4]));
+                        break;
+                    }
+                }
+            }
+            const offset = i * 4;
+            lut[offset] = r;
+            lut[offset + 1] = g;
+            lut[offset + 2] = b;
+            lut[offset + 3] = a;
+        }
+        return { lut, maxVal, step, count };
+    }
+
+    const RATE_LUT = buildLUT(RATE_RAMP, 100.0, 0.1);
+    const ACC3_LUT = buildLUT(ACC3_RAMP, 150.0, 0.15);
+    const ACC24_LUT = buildLUT(ACC24_RAMP, 250.0, 0.2);
+
+    // Initialize Canvas
+    function setupCanvas() {
+        if (STATE.canvas) return;
+        STATE.canvas = document.getElementById('ecmwf-rain-canvas');
+        if (!STATE.canvas) {
+            STATE.canvas = document.createElement('canvas');
+            STATE.canvas.id = 'ecmwf-rain-canvas';
+            STATE.canvas.style.display = 'none';
+            document.body.appendChild(STATE.canvas);
+        }
+        STATE.canvas.width = STATE.width;
+        STATE.canvas.height = STATE.height;
+        STATE.ctx = STATE.canvas.getContext('2d', { willReadFrequently: true });
+        STATE.imgData = STATE.ctx.createImageData(STATE.width, STATE.height);
+    }
+
+    // Bilinear Interpolation Rasterizer onto Canvas
+    function renderFrame(hourIdx) {
+        if (!STATE.data || !STATE.data.frames) return;
+        setupCanvas();
+
+        let activeFrames = STATE.data.frames;
+        let lutObj = RATE_LUT;
+        if (STATE.mode === 'acc3' && STATE.acc3Frames) {
+            activeFrames = STATE.acc3Frames;
+            lutObj = ACC3_LUT;
+        } else if (STATE.mode === 'acc24' && STATE.acc24Frames) {
+            activeFrames = STATE.acc24Frames;
+            lutObj = ACC24_LUT;
+        }
+
+        const grid = activeFrames[hourIdx] || activeFrames[0];
+        const { lut, step, count } = lutObj;
+
+        const w = STATE.width;
+        const h = STATE.height;
+        const d = STATE.imgData.data;
+
+        const maxColIdx = COLS - 1;
+        const maxRowIdx = ROWS - 1;
+        const colScale = maxColIdx / (w - 1);
+        const rowScale = maxRowIdx / (h - 1);
+
+        let pixelIdx = 0;
+        for (let y = 0; y < h; y++) {
+            const v = y * rowScale;
+            const r0 = Math.floor(v);
+            const r1 = Math.min(maxRowIdx, r0 + 1);
+            const fy = v - r0;
+            const row0Offset = r0 * COLS;
+            const row1Offset = r1 * COLS;
+
+            for (let x = 0; x < w; x++) {
+                const u = x * colScale;
+                const c0 = Math.floor(u);
+                const c1 = Math.min(maxColIdx, c0 + 1);
+                const fx = u - c0;
+
+                const v00 = grid[row0Offset + c0] || 0;
+                const v10 = grid[row0Offset + c1] || 0;
+                const v01 = grid[row1Offset + c0] || 0;
+                const v11 = grid[row1Offset + c1] || 0;
+
+                const vTop = v00 + (v10 - v00) * fx;
+                const vBottom = v01 + (v11 - v01) * fx;
+                const val = vTop + (vBottom - vTop) * fy;
+
+                if (val < 0.05) {
+                    d[pixelIdx] = 0;
+                    d[pixelIdx + 1] = 0;
+                    d[pixelIdx + 2] = 0;
+                    d[pixelIdx + 3] = 0;
+                } else {
+                    const lutIdx = Math.min(count - 1, Math.round(val / step)) * 4;
+                    d[pixelIdx] = lut[lutIdx];
+                    d[pixelIdx + 1] = lut[lutIdx + 1];
+                    d[pixelIdx + 2] = lut[lutIdx + 2];
+                    d[pixelIdx + 3] = lut[lutIdx + 3];
+                }
+                pixelIdx += 4;
+            }
+        }
+
+        STATE.ctx.putImageData(STATE.imgData, 0, 0);
+
+        // Force MapLibre to update texture if source exists
+        if (typeof map !== 'undefined' && map.getSource('ecmwf-rain-source')) {
+            map.triggerRepaint();
+        }
+    }
+
+    // Precalculate rolling 3h and 24h accumulation for each forecast hour
+    function calculateAccumulation() {
+        if (!STATE.data || !STATE.data.frames) return;
+        const numHours = STATE.data.frames.length;
+        const numPts = STATE.data.frames[0].length;
+        STATE.acc3Frames = [];
+        STATE.acc24Frames = [];
+
+        for (let h = 0; h < numHours; h++) {
+            // 3-hour accumulation (rolling sum of up to 3 hours: [h-2, h-1, h])
+            const start3H = Math.max(0, h - 2);
+            const acc3 = new Float32Array(numPts);
+            for (let ph = start3H; ph <= h; ph++) {
+                const f = STATE.data.frames[ph];
+                for (let p = 0; p < numPts; p++) acc3[p] += f[p];
+            }
+            const rounded3 = new Array(numPts);
+            for (let p = 0; p < numPts; p++) rounded3[p] = Math.round(acc3[p] * 10) / 10;
+            STATE.acc3Frames.push(rounded3);
+
+            // 24-hour accumulation (rolling sum of up to 24 hours: [h-23 ... h])
+            const start24H = Math.max(0, h - 23);
+            const acc24 = new Float32Array(numPts);
+            for (let ph = start24H; ph <= h; ph++) {
+                const f = STATE.data.frames[ph];
+                for (let p = 0; p < numPts; p++) acc24[p] += f[p];
+            }
+            const rounded24 = new Array(numPts);
+            for (let p = 0; p < numPts; p++) rounded24[p] = Math.round(acc24[p] * 10) / 10;
+            STATE.acc24Frames.push(rounded24);
+        }
+    }
+
+    // Freshness check: returns true only if forecast is under 6 hours old and has >= 24h future forecast
+    function isDataFresh(data) {
+        if (!data || !data.times || !data.frames || data.times.length === 0) return false;
+        const nowMs = Date.now();
+        const lastTimeMs = new Date(data.times[data.times.length - 1]).getTime();
+        // If the forecast ends less than 24 hours into the future, consider it stale
+        if (lastTimeMs - nowMs < 24 * 3600 * 1000) return false;
+
+        // If updated_at is present and older than 6 hours, consider it stale
+        if (data.updated_at) {
+            const updatedMs = new Date(data.updated_at).getTime();
+            if (nowMs - updatedMs > 6 * 3600 * 1000) return false;
+        }
+        return true;
+    }
+
+    // Load Forecast Data with Automatic Live Update & Self-Healing Cache
+    async function loadForecastData() {
+        if (STATE.loaded || STATE.loading) return;
+        STATE.loading = true;
+
+        const tagInfo = document.getElementById('weather-tag-info');
+        if (tagInfo) tagInfo.textContent = 'Checking forecast...';
+
+        // 1. Check client-side localStorage cache (2h TTL)
+        try {
+            const cachedStr = localStorage.getItem('ecmwf_rain_cache');
+            const cachedTs = parseInt(localStorage.getItem('ecmwf_rain_ts') || '0', 10);
+            if (cachedStr && (Date.now() - cachedTs < 2 * 3600 * 1000)) {
+                const parsed = JSON.parse(cachedStr);
+                if (isDataFresh(parsed)) {
+                    STATE.data = parsed;
+                    STATE.loaded = true;
+                    console.log('🌧️ [ECMWF] Loaded fresh data from client localStorage cache.');
+                }
+            }
+        } catch (e) {
+            console.warn('🌧️ [ECMWF] localStorage read error:', e);
+        }
+
+        // 2. Check static JSON file if not loaded from cache
+        if (!STATE.loaded) {
+            try {
+                const resp = await fetch('ecmwf_rain_72h.json?t=' + Date.now());
+                if (resp.ok) {
+                    const json = await resp.json();
+                    if (isDataFresh(json)) {
+                        STATE.data = json;
+                        STATE.loaded = true;
+                        console.log('🌧️ [ECMWF] Loaded fresh data from static ecmwf_rain_72h.json.');
+                    } else {
+                        console.warn('🌧️ [ECMWF] Static ecmwf_rain_72h.json is older than 6h, updating from live Open-Meteo...');
+                    }
+                }
+            } catch (err) {
+                console.warn('🌧️ [ECMWF] Could not load static JSON, trying direct API...', err);
+            }
+        }
+
+        // 3. If stale or missing, automatically fetch live ECMWF 9km from Open-Meteo API
+        if (!STATE.loaded) {
+            if (tagInfo) tagInfo.textContent = 'Fetching Live 9km ECMWF...';
+            try {
+                STATE.data = await fetchDirectFromOpenMeteo();
+                STATE.loaded = true;
+                try {
+                    localStorage.setItem('ecmwf_rain_cache', JSON.stringify(STATE.data));
+                    localStorage.setItem('ecmwf_rain_ts', String(Date.now()));
+                } catch (storeErr) {
+                    console.warn('🌧️ [ECMWF] Could not store to localStorage:', storeErr);
+                }
+                console.log('🌧️ [ECMWF] Direct Open-Meteo ECMWF live fetch successful.');
+            } catch (apiErr) {
+                console.error('🌧️ [ECMWF] Direct API fetch failed:', apiErr);
+                // Offline fallback: use whatever static data was present
+                if (!STATE.data) {
+                    try {
+                        const fallbackResp = await fetch('ecmwf_rain_72h.json?v=' + (window.CACHE_VERSION || '73'));
+                        if (fallbackResp.ok) {
+                            STATE.data = await fallbackResp.json();
+                            STATE.loaded = true;
+                        }
+                    } catch (_) {}
+                }
+            }
+        }
+
+        STATE.loading = false;
+
+        if (STATE.data) {
+            calculateAccumulation();
+            STATE.nowIndex = findNowIndex();
+            STATE.currentHour = STATE.nowIndex;
+            const slider = document.getElementById('weather-time-slider');
+            if (slider && STATE.data.times) {
+                slider.max = STATE.data.times.length - 1;
+                slider.value = STATE.currentHour;
+            }
+            setupTimelineMarkers();
+            updateUI();
+            renderFrame(STATE.currentHour);
+            if (tagInfo) {
+                const isLive = STATE.data.model && STATE.data.model.includes('Direct API');
+                tagInfo.textContent = isLive ? 'ECMWF 9km · Live API' : 'ECMWF IFS 0.1° · 72h';
+            }
+        }
+    }
+
+    // Identify the time index corresponding to the current hour (NOW)
+    function findNowIndex() {
+        if (!STATE.data || !STATE.data.times) return 0;
+        const nowMs = Date.now();
+        let bestIdx = 0;
+        let minDiff = Infinity;
+        for (let i = 0; i < STATE.data.times.length; i++) {
+            const t = new Date(STATE.data.times[i]).getTime();
+            const diff = Math.abs(t - nowMs);
+            if (diff < minDiff) {
+                minDiff = diff;
+                bestIdx = i;
+            }
+        }
+        return bestIdx;
+    }
+
+    // Client-side Open-Meteo direct fetch fallback
+    async function fetchDirectFromOpenMeteo() {
+        const lats = [];
+        const lons = [];
+        for (let r = 0; r < ROWS; r++) {
+            const lat = BOUNDS[3] - r * ((BOUNDS[3] - BOUNDS[1]) / (ROWS - 1));
+            for (let c = 0; c < COLS; c++) {
+                const lon = BOUNDS[0] + c * ((BOUNDS[2] - BOUNDS[0]) / (COLS - 1));
+                lats.push(lat.toFixed(3));
+                lons.push(lon.toFixed(3));
+            }
+        }
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&hourly=precipitation&models=ecmwf_ifs&timezone=Asia/Colombo&past_days=1&forecast_days=3`;
+        const res = await fetch(url);
+        const json = await res.json();
+        const times = json[0].hourly.time;
+        const frames = [];
+        for (let h = 0; h < times.length; h++) {
+            const frame = [];
+            for (let p = 0; p < json.length; p++) {
+                frame.push(Math.round((json[p].hourly.precipitation[h] || 0) * 10) / 10);
+            }
+            frames.push(frame);
+        }
+        return {
+            model: 'ECMWF IFS 9km (Direct API)',
+            bounds: BOUNDS,
+            rows: ROWS,
+            cols: COLS,
+            times: times,
+            frames: frames
+        };
+    }
+
+    // Attach MapLibre Layer
+    function attachMapLayer() {
+        if (typeof map === 'undefined') return;
+
+        setupCanvas();
+
+        if (!map.getSource('ecmwf-rain-source')) {
+            map.addSource('ecmwf-rain-source', {
+                type: 'canvas',
+                canvas: 'ecmwf-rain-canvas',
+                coordinates: [
+                    [BOUNDS[0], BOUNDS[3]], // Top Left (NW)
+                    [BOUNDS[2], BOUNDS[3]], // Top Right (NE)
+                    [BOUNDS[2], BOUNDS[1]], // Bottom Right (SE)
+                    [BOUNDS[0], BOUNDS[1]]  // Bottom Left (SW)
+                ],
+                animate: true
+            });
+        }
+
+        if (!map.getLayer('ecmwf-rain-layer')) {
+            // Place before inspection points so hazard points remain crisp and readable on top
+            const beforeId = map.getLayer('z-index-6-top') ? 'z-index-6-top' : 
+                            (map.getLayer('z-index-5-overlays') ? 'z-index-5-overlays' : undefined);
+
+            map.addLayer({
+                id: 'ecmwf-rain-layer',
+                type: 'raster',
+                source: 'ecmwf-rain-source',
+                paint: {
+                    'raster-opacity': STATE.opacity,
+                    'raster-resampling': 'linear',
+                    'raster-fade-duration': 0
+                }
+            }, beforeId);
+        } else {
+            map.setLayoutProperty('ecmwf-rain-layer', 'visibility', 'visible');
+            map.setPaintProperty('ecmwf-rain-layer', 'raster-opacity', STATE.opacity);
+        }
+    }
+
+    function detachMapLayer() {
+        if (typeof map === 'undefined') return;
+        if (map.getLayer('ecmwf-rain-layer')) {
+            map.setLayoutProperty('ecmwf-rain-layer', 'visibility', 'none');
+        }
+        if (STATE.activePopup) {
+            STATE.activePopup.remove();
+            STATE.activePopup = null;
+        }
+    }
+
+    // Update UI Elements
+    function updateUI() {
+        const slider = document.getElementById('weather-time-slider');
+        if (slider) slider.value = STATE.currentHour;
+
+        const timeLabel = document.getElementById('weather-datetime-label');
+        const offsetLabel = document.getElementById('weather-offset-label');
+        const badgeNow = document.getElementById('weather-step-badge');
+        const peakVal = document.getElementById('weather-peak-val');
+
+        if (STATE.data && STATE.data.times && STATE.data.times[STATE.currentHour]) {
+            const rawTime = STATE.data.times[STATE.currentHour];
+            const d = new Date(rawTime);
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const dayStr = days[d.getDay()];
+            const dateStr = d.getDate();
+            const monStr = months[d.getMonth()];
+            const hourStr = String(d.getHours()).padStart(2, '0') + ':00';
+
+            if (timeLabel) timeLabel.textContent = `${dayStr} ${dateStr} ${monStr} · ${hourStr}`;
+            
+            const nowIdx = (STATE.nowIndex !== undefined) ? STATE.nowIndex : 0;
+            const offsetHours = STATE.currentHour - nowIdx;
+
+            if (offsetLabel) {
+                if (offsetHours === 0) offsetLabel.textContent = '(Now)';
+                else if (offsetHours > 0) offsetLabel.textContent = `(+${offsetHours}h)`;
+                else offsetLabel.textContent = `(${offsetHours}h)`;
+            }
+
+            if (badgeNow) {
+                if (offsetHours === 0) {
+                    badgeNow.textContent = 'NOW';
+                    badgeNow.style.background = '#ef4444';
+                } else if (offsetHours > 0) {
+                    badgeNow.textContent = `+${offsetHours}h`;
+                    badgeNow.style.background = '#0ea5e9';
+                } else {
+                    badgeNow.textContent = `${offsetHours}h`;
+                    badgeNow.style.background = '#64748b';
+                }
+            }
+
+            // Calculate current island peak
+            let activeFrames = STATE.data.frames;
+            let unit = 'mm/h';
+            if (STATE.mode === 'acc3' && STATE.acc3Frames) {
+                activeFrames = STATE.acc3Frames;
+                unit = 'mm / 3h';
+            } else if (STATE.mode === 'acc24' && STATE.acc24Frames) {
+                activeFrames = STATE.acc24Frames;
+                unit = 'mm / 24h';
+            }
+
+            const currentFrame = activeFrames[STATE.currentHour] || [];
+            let maxP = 0;
+            for (let i = 0; i < currentFrame.length; i++) {
+                if (currentFrame[i] > maxP) maxP = currentFrame[i];
+            }
+
+            if (peakVal) {
+                peakVal.textContent = `${maxP.toFixed(1)} ${unit}`;
+                if (STATE.mode === 'acc24') {
+                    if (maxP >= 150) {
+                        peakVal.style.color = '#f87171'; // Red Level 3
+                    } else if (maxP >= 100) {
+                        peakVal.style.color = '#fb923c'; // Amber Level 2
+                    } else if (maxP >= 75) {
+                        peakVal.style.color = '#facc15'; // Yellow Level 1
+                    } else {
+                        peakVal.style.color = '#38bdf8';
+                    }
+                } else if (STATE.mode === 'acc3') {
+                    if (maxP >= 75) {
+                        peakVal.style.color = '#f87171';
+                    } else if (maxP >= 40) {
+                        peakVal.style.color = '#fb923c';
+                    } else if (maxP >= 20) {
+                        peakVal.style.color = '#facc15';
+                    } else {
+                        peakVal.style.color = '#38bdf8';
+                    }
+                } else {
+                    peakVal.style.color = '#38bdf8';
+                }
+            }
+        }
+    }
+
+    function setupTimelineMarkers() {
+        if (!STATE.data || !STATE.data.times) return;
+        const d1 = document.getElementById('mark-day-1');
+        const d2 = document.getElementById('mark-day-2');
+        const d3 = document.getElementById('mark-day-3');
+
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const is96 = STATE.data.times.length === 96;
+        const todayIdx = is96 ? 24 : 0;
+        const tomIdx = is96 ? 48 : 24;
+        const day3Idx = is96 ? 72 : 48;
+
+        if (STATE.data.times[todayIdx] && d1) {
+            const dt1 = new Date(STATE.data.times[todayIdx]);
+            d1.textContent = `Today (${days[dt1.getDay()]})`;
+        }
+        if (STATE.data.times[tomIdx] && d2) {
+            const dt2 = new Date(STATE.data.times[tomIdx]);
+            d2.textContent = `Tomorrow (${days[dt2.getDay()]})`;
+        }
+        if (STATE.data.times[day3Idx] && d3) {
+            const dt3 = new Date(STATE.data.times[day3Idx]);
+            d3.textContent = `Day 3 (${days[dt3.getDay()]})`;
+        }
+    }
+
+    // Playback Controller
+    function togglePlay() {
+        if (STATE.isPlaying) {
+            pause();
+        } else {
+            play();
+        }
+    }
+
+    function play() {
+        STATE.isPlaying = true;
+        const icon = document.getElementById('weather-play-icon');
+        if (icon) icon.textContent = '❚❚';
+
+        if (STATE.playInterval) clearInterval(STATE.playInterval);
+        STATE.playInterval = setInterval(() => {
+            const totalHours = STATE.data && STATE.data.times ? STATE.data.times.length : 72;
+            STATE.currentHour = (STATE.currentHour + 1) % totalHours;
+            updateUI();
+            renderFrame(STATE.currentHour);
+        }, 750);
+    }
+
+    function pause() {
+        STATE.isPlaying = false;
+        const icon = document.getElementById('weather-play-icon');
+        if (icon) icon.textContent = '▶';
+        if (STATE.playInterval) {
+            clearInterval(STATE.playInterval);
+            STATE.playInterval = null;
+        }
+    }
+
+    function step(delta) {
+        pause();
+        const totalHours = STATE.data && STATE.data.times ? STATE.data.times.length : 72;
+        STATE.currentHour = (STATE.currentHour + delta + totalHours) % totalHours;
+        updateUI();
+        renderFrame(STATE.currentHour);
+    }
+
+    // Switch between 1h Rate, 3h Rate, and 24h Total modes
+    function setMode(newMode) {
+        if (STATE.mode === newMode) return;
+        STATE.mode = newMode;
+
+        const btnRate = document.getElementById('btn-weather-mode-rate');
+        const btnAcc3 = document.getElementById('btn-weather-mode-acc3');
+        const btnAcc24 = document.getElementById('btn-weather-mode-acc24');
+        const legendLabel = document.getElementById('weather-legend-label');
+        const ticksWrap = document.getElementById('weather-ticks-wrap');
+
+        // Reset pill active states
+        if (btnRate) btnRate.classList.remove('active');
+        if (btnAcc3) btnAcc3.classList.remove('active');
+        if (btnAcc24) btnAcc24.classList.remove('active');
+
+        if (newMode === 'rate') {
+            if (btnRate) btnRate.classList.add('active');
+            if (legendLabel) legendLabel.textContent = 'Precipitation (mm/h):';
+            if (ticksWrap) {
+                ticksWrap.innerHTML = `
+                    <span>0.1</span>
+                    <span>1</span>
+                    <span>2.5</span>
+                    <span>5</span>
+                    <span>10</span>
+                    <span>20</span>
+                    <span>35</span>
+                    <span>50+</span>
+                `;
+            }
+        } else if (newMode === 'acc3') {
+            if (btnAcc3) btnAcc3.classList.add('active');
+            if (legendLabel) legendLabel.textContent = '3h Rate (mm):';
+            if (ticksWrap) {
+                ticksWrap.innerHTML = `
+                    <span>0.5</span>
+                    <span>2</span>
+                    <span>5</span>
+                    <span>10</span>
+                    <span>20</span>
+                    <span>35</span>
+                    <span>50</span>
+                    <span>75+</span>
+                `;
+            }
+        } else if (newMode === 'acc24') {
+            if (btnAcc24) btnAcc24.classList.add('active');
+            if (legendLabel) legendLabel.textContent = '24h Total (mm):';
+            if (ticksWrap) {
+                ticksWrap.innerHTML = `
+                    <span>2</span>
+                    <span>10</span>
+                    <span>25</span>
+                    <span>50</span>
+                    <span class="tick-nbro nbro-l1" title="Level 1: Watch (≥75mm)">75mm ⚠️</span>
+                    <span class="tick-nbro nbro-l2" title="Level 2: Alert (≥100mm)">100mm 🚨</span>
+                    <span class="tick-nbro nbro-l3" title="Level 3: Evacuation (≥150mm)">150mm+ 🛑</span>
+                `;
+            }
+        }
+
+        updateUI();
+        renderFrame(STATE.currentHour);
+    }
+
+    // Query value at given [lng, lat]
+    function queryRainfallAtCoord(lng, lat) {
+        if (!STATE.data || !STATE.data.frames) return null;
+        if (lng < BOUNDS[0] || lng > BOUNDS[2] || lat < BOUNDS[1] || lat > BOUNDS[3]) return null;
+
+        const colFrac = (lng - BOUNDS[0]) / (BOUNDS[2] - BOUNDS[0]) * (COLS - 1);
+        const rowFrac = (BOUNDS[3] - lat) / (BOUNDS[3] - BOUNDS[1]) * (ROWS - 1);
+
+        const c0 = Math.floor(colFrac);
+        const c1 = Math.min(COLS - 1, c0 + 1);
+        const fx = colFrac - c0;
+
+        const r0 = Math.floor(rowFrac);
+        const r1 = Math.min(ROWS - 1, r0 + 1);
+        const fy = rowFrac - r0;
+
+        function interp(frame) {
+            const v00 = frame[r0 * COLS + c0] || 0;
+            const v10 = frame[r0 * COLS + c1] || 0;
+            const v01 = frame[r1 * COLS + c0] || 0;
+            const v11 = frame[r1 * COLS + c1] || 0;
+            const top = v00 + (v10 - v00) * fx;
+            const bot = v01 + (v11 - v01) * fx;
+            return Math.max(0, top + (bot - top) * fy);
+        }
+
+        const rateVal = interp(STATE.data.frames[STATE.currentHour] || []);
+        const acc3Val = (STATE.acc3Frames && STATE.acc3Frames[STATE.currentHour]) ?
+                        interp(STATE.acc3Frames[STATE.currentHour]) : (rateVal * 3);
+        const acc24Val = (STATE.acc24Frames && STATE.acc24Frames[STATE.currentHour]) ? 
+                        interp(STATE.acc24Frames[STATE.currentHour]) : rateVal;
+
+        return {
+            rate: Math.round(rateVal * 10) / 10,
+            acc3: Math.round(acc3Val * 10) / 10,
+            acc24: Math.round(acc24Val * 10) / 10,
+            time: STATE.data.times[STATE.currentHour]
+        };
+    }
+
+    // Map Click Inspector
+    function handleMapClick(e) {
+        const checkbox = document.getElementById('layer-ecmwf-rain');
+        if (!checkbox || !checkbox.checked) return;
+
+        // Don't intercept clicks on existing inspection or station points
+        try {
+            const pointLayers = ['inspection_points', 'drone_surveys_points', 'satellite_points', 'arg_locations_points'].filter(id => map.getLayer(id));
+            if (pointLayers.length > 0) {
+                const hits = map.queryRenderedFeatures(e.point, { layers: pointLayers });
+                if (hits && hits.length > 0) return;
+            }
+        } catch (_) {}
+
+        const lng = e.lngLat.lng;
+        const lat = e.lngLat.lat;
+        const res = queryRainfallAtCoord(lng, lat);
+        if (!res) return;
+
+        let alertBadge = '<span class="weather-popup-alert" style="background:rgba(34,197,94,0.2); color:#4ade80;">✅ Normal / Below Warning Level</span>';
+        if (res.acc24 >= 150) {
+            alertBadge = '<span class="weather-popup-alert" style="background:rgba(239,68,68,0.25); color:#f87171; border:1px solid #ef4444;">🛑 Level 3: Evacuation Alert (≥150mm)</span>';
+        } else if (res.acc24 >= 100) {
+            alertBadge = '<span class="weather-popup-alert" style="background:rgba(249,115,22,0.25); color:#fb923c; border:1px solid #f97316;">🚨 Level 2: Warning Alert (≥100mm)</span>';
+        } else if (res.acc24 >= 75) {
+            alertBadge = '<span class="weather-popup-alert" style="background:rgba(234,179,8,0.25); color:#facc15; border:1px solid #eab308;">⚠️ Level 1: Watch Alert (≥75mm)</span>';
+        }
+
+        const html = `
+            <div class="weather-map-popup">
+                <div class="weather-popup-title">🌧️ ECMWF 9 km Rain Forecast</div>
+                <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:6px;">${res.time} · Lat ${lat.toFixed(3)}, Lon ${lng.toFixed(3)}</div>
+                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin: 6px 0; background:rgba(30,41,59,0.5); padding:6px 8px; border-radius:8px;">
+                    <div>
+                        <span style="font-size:0.62rem; color:#94a3b8; display:block;">1h Rate</span>
+                        <b style="font-size:1.05rem; color:#38bdf8;">${res.rate} mm/h</b>
+                    </div>
+                    <div>
+                        <span style="font-size:0.62rem; color:#94a3b8; display:block;">3h Rate</span>
+                        <b style="font-size:1.05rem; color:#67e8f9;">${res.acc3} mm</b>
+                    </div>
+                    <div>
+                        <span style="font-size:0.62rem; color:#94a3b8; display:block;">24h Total</span>
+                        <b style="font-size:1.05rem; color:#f8fafc;">${res.acc24} mm</b>
+                    </div>
+                </div>
+                <div>${alertBadge}</div>
+            </div>
+        `;
+
+        if (STATE.activePopup) STATE.activePopup.remove();
+        STATE.activePopup = new maplibregl.Popup({ className: 'weather-map-popup' })
+            .setLngLat([lng, lat])
+            .setHTML(html)
+            .addTo(map);
+    }
+
+    // Wire up all UI Event Listeners
+    function setupEventListeners() {
+        const checkbox = document.getElementById('layer-ecmwf-rain');
+        const player = document.getElementById('weather-player');
+        const playBtn = document.getElementById('weather-play-btn');
+        const prevBtn = document.getElementById('weather-step-prev');
+        const nextBtn = document.getElementById('weather-step-next');
+        const slider = document.getElementById('weather-time-slider');
+        const closeBtn = document.getElementById('weather-close-btn');
+        const btnRate = document.getElementById('btn-weather-mode-rate');
+        const btnAcc3 = document.getElementById('btn-weather-mode-acc3');
+        const btnAcc24 = document.getElementById('btn-weather-mode-acc24');
+        const opacitySlider = document.getElementById('weather-opacity-slider');
+        const opacityVal = document.getElementById('weather-opacity-val');
+
+        if (checkbox) {
+            checkbox.addEventListener('change', async function () {
+                if (this.checked) {
+                    if (player) player.classList.remove('hidden');
+                    await loadForecastData();
+                    attachMapLayer();
+                    renderFrame(STATE.currentHour);
+                } else {
+                    pause();
+                    if (player) player.classList.add('hidden');
+                    detachMapLayer();
+                }
+            });
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                if (checkbox) {
+                    checkbox.checked = false;
+                    checkbox.dispatchEvent(new Event('change'));
+                } else {
+                    if (player) player.classList.add('hidden');
+                    pause();
+                    detachMapLayer();
+                }
+            });
+        }
+
+        if (playBtn) playBtn.addEventListener('click', togglePlay);
+        if (prevBtn) prevBtn.addEventListener('click', () => step(-1));
+        if (nextBtn) nextBtn.addEventListener('click', () => step(1));
+
+        if (slider) {
+            slider.addEventListener('input', (e) => {
+                pause();
+                STATE.currentHour = parseInt(e.target.value, 10) || 0;
+                updateUI();
+                renderFrame(STATE.currentHour);
+            });
+        }
+
+        if (btnRate) btnRate.addEventListener('click', () => setMode('rate'));
+        if (btnAcc3) btnAcc3.addEventListener('click', () => setMode('acc3'));
+        if (btnAcc24) btnAcc24.addEventListener('click', () => setMode('acc24'));
+
+        if (opacitySlider) {
+            opacitySlider.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value, 10);
+                STATE.opacity = val / 100;
+                if (opacityVal) opacityVal.textContent = val + '%';
+                if (typeof map !== 'undefined' && map.getLayer('ecmwf-rain-layer')) {
+                    map.setPaintProperty('ecmwf-rain-layer', 'raster-opacity', STATE.opacity);
+                }
+            });
+        }
+
+        // Map Click
+        if (typeof map !== 'undefined') {
+            map.on('click', handleMapClick);
+        }
+    }
+
+    // Run setup on DOMContentLoaded or immediate
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupEventListeners);
+    } else {
+        setupEventListeners();
+    }
+})();
+
+
