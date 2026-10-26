@@ -2741,7 +2741,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v75'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v76'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2883,7 +2883,7 @@ async function loadDashboardAndSearchData() {
     try {
         // PERF-MOB-3: Use default browser cache (IDB version-stamp already handles staleness detection).
         // cache:'no-cache' was forcing a full network revalidation on every single page load.
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v75';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v76';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'default' });
         if (res.ok) {
             const freshStats = await res.json();
@@ -3743,10 +3743,46 @@ function applyAdvancedFilters() {
         STATE.imgData = STATE.ctx.createImageData(STATE.width, STATE.height);
     }
 
-    // Bilinear Interpolation Rasterizer onto Canvas
+    // Precomputed spatial coordinate lookups for sub-millisecond bilinear rasterization
+    let COL_LOOKUP = null;
+    let ROW_LOOKUP = null;
+
+    function buildSpatialLUT() {
+        const w = STATE.width;
+        const h = STATE.height;
+        const maxColIdx = COLS - 1;
+        const maxRowIdx = ROWS - 1;
+        const colScale = maxColIdx / (w - 1);
+        const rowScale = maxRowIdx / (h - 1);
+
+        COL_LOOKUP = new Array(w);
+        for (let x = 0; x < w; x++) {
+            const u = x * colScale;
+            const c0 = Math.floor(u);
+            const c1 = Math.min(maxColIdx, c0 + 1);
+            const fx = u - c0;
+            const edgeDistX = Math.min(x, w - 1 - x);
+            COL_LOOKUP[x] = { c0, c1, fx, edgeDistX };
+        }
+
+        ROW_LOOKUP = new Array(h);
+        for (let y = 0; y < h; y++) {
+            const v = y * rowScale;
+            const r0 = Math.floor(v);
+            const r1 = Math.min(maxRowIdx, r0 + 1);
+            const fy = v - r0;
+            const r0Off = r0 * COLS;
+            const r1Off = r1 * COLS;
+            const edgeDistY = Math.min(y, h - 1 - y);
+            ROW_LOOKUP[y] = { r0Off, r1Off, fy, edgeDistY };
+        }
+    }
+
+    // Bilinear Interpolation High-Performance Rasterizer onto Canvas
     function renderFrame(hourIdx) {
         if (!STATE.data || !STATE.data.frames) return;
         setupCanvas();
+        if (!COL_LOOKUP || !ROW_LOOKUP) buildSpatialLUT();
 
         let activeFrames = STATE.data.frames;
         let lutObj = RATE_LUT;
@@ -3765,33 +3801,22 @@ function applyAdvancedFilters() {
         const h = STATE.height;
         const d = STATE.imgData.data;
 
-        const maxColIdx = COLS - 1;
-        const maxRowIdx = ROWS - 1;
-        const colScale = maxColIdx / (w - 1);
-        const rowScale = maxRowIdx / (h - 1);
-
         let pixelIdx = 0;
         for (let y = 0; y < h; y++) {
-            const v = y * rowScale;
-            const r0 = Math.floor(v);
-            const r1 = Math.min(maxRowIdx, r0 + 1);
-            const fy = v - r0;
-            const row0Offset = r0 * COLS;
-            const row1Offset = r1 * COLS;
-
-            // Soft edge fade across 10 pixels to seamlessly merge with ocean
-            const edgeDistY = Math.min(y, h - 1 - y);
+            const rowInfo = ROW_LOOKUP[y];
+            const r0Off = rowInfo.r0Off;
+            const r1Off = rowInfo.r1Off;
+            const fy = rowInfo.fy;
+            const edgeDistY = rowInfo.edgeDistY;
 
             for (let x = 0; x < w; x++) {
-                const u = x * colScale;
-                const c0 = Math.floor(u);
-                const c1 = Math.min(maxColIdx, c0 + 1);
-                const fx = u - c0;
+                const colInfo = COL_LOOKUP[x];
+                const fx = colInfo.fx;
 
-                const v00 = grid[row0Offset + c0] || 0;
-                const v10 = grid[row0Offset + c1] || 0;
-                const v01 = grid[row1Offset + c0] || 0;
-                const v11 = grid[row1Offset + c1] || 0;
+                const v00 = grid[r0Off + colInfo.c0] || 0;
+                const v10 = grid[r0Off + colInfo.c1] || 0;
+                const v01 = grid[r1Off + colInfo.c0] || 0;
+                const v11 = grid[r1Off + colInfo.c1] || 0;
 
                 const vTop = v00 + (v10 - v00) * fx;
                 const vBottom = v01 + (v11 - v01) * fx;
@@ -3803,9 +3828,8 @@ function applyAdvancedFilters() {
                     d[pixelIdx + 2] = 0;
                     d[pixelIdx + 3] = 0;
                 } else {
-                    const edgeDistX = Math.min(x, w - 1 - x);
-                    const edgeDist = Math.min(edgeDistX, edgeDistY);
-                    const edgeFade = edgeDist < 10 ? (edgeDist / 10) : 1.0;
+                    const edgeDist = Math.min(colInfo.edgeDistX, edgeDistY);
+                    const edgeFade = edgeDist < 10 ? (edgeDist * 0.1) : 1.0;
 
                     const lutIdx = Math.min(count - 1, Math.round(val / step)) * 4;
                     d[pixelIdx] = lut[lutIdx];
@@ -3846,6 +3870,7 @@ function applyAdvancedFilters() {
             STATE.acc3Frames.push(rounded3);
 
             // 24-hour accumulation (rolling sum of up to 24 hours: [h-23 ... h])
+            // Thanks to past_days=1, h-23 is fully populated even for NOW!
             const start24H = Math.max(0, h - 23);
             const acc24 = new Float32Array(numPts);
             for (let ph = start24H; ph <= h; ph++) {
@@ -3858,31 +3883,23 @@ function applyAdvancedFilters() {
         }
     }
 
-    // Freshness check: returns true only if forecast is under 6 hours old, has >= 24h future forecast,
-    // covers the full island bounds, and starts today (not previous days)
+    // Freshness check: returns true only if forecast has >= 24h future forecast,
+    // covers the full island bounds, and updated_at is within 12 hours (ECMWF runs every 6h)
     function isDataFresh(data) {
         if (!data || !data.times || !data.frames || data.times.length === 0) return false;
         // Invalidate older narrow bounds (east < 82.0) so eastern province is never cut off
         if (data.bounds && data.bounds[2] < 82.0) return false;
         
-        // Invalidate if data started before today's date in Sri Lanka time (Asia/Colombo UTC+5:30)
-        let todayStr;
-        try {
-            todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(new Date());
-        } catch (_) {
-            todayStr = new Date().toISOString().slice(0, 10);
-        }
-        if (data.times[0] && data.times[0].slice(0, 10) < todayStr) return false;
-
         const nowMs = Date.now();
-        const lastTimeMs = new Date(data.times[data.times.length - 1]).getTime();
+        const lastTime = data.times[data.times.length - 1];
+        const lastTimeMs = new Date(lastTime.includes('+') || lastTime.endsWith('Z') ? lastTime : lastTime + '+05:30').getTime();
         // If the forecast ends less than 24 hours into the future, consider it stale
         if (lastTimeMs - nowMs < 24 * 3600 * 1000) return false;
 
-        // If updated_at is present and older than 6 hours, consider it stale
+        // If updated_at is present and older than 12 hours, consider it stale (ECMWF runs every 6h)
         if (data.updated_at) {
             const updatedMs = new Date(data.updated_at).getTime();
-            if (nowMs - updatedMs > 6 * 3600 * 1000) return false;
+            if (nowMs - updatedMs > 12 * 3600 * 1000) return false;
         }
         return true;
     }
@@ -3896,11 +3913,14 @@ function applyAdvancedFilters() {
         if (tagInfo) tagInfo.textContent = 'Checking forecast...';
 
         // 1. Check client-side localStorage cache (2h TTL) with versioned key to purge old cache
-        const CACHE_KEY = 'ecmwf_rain_cache_v74';
-        const CACHE_TS_KEY = 'ecmwf_rain_ts_v74';
+        const vKey = (typeof CACHE_VERSION !== 'undefined' ? CACHE_VERSION : 'v75');
+        const CACHE_KEY = 'ecmwf_rain_cache_' + vKey;
+        const CACHE_TS_KEY = 'ecmwf_rain_ts_' + vKey;
         try {
             localStorage.removeItem('ecmwf_rain_cache');
             localStorage.removeItem('ecmwf_rain_ts');
+            localStorage.removeItem('ecmwf_rain_cache_v74');
+            localStorage.removeItem('ecmwf_rain_ts_v74');
             const cachedStr = localStorage.getItem(CACHE_KEY);
             const cachedTs = parseInt(localStorage.getItem(CACHE_TS_KEY) || '0', 10);
             if (cachedStr && (Date.now() - cachedTs < 2 * 3600 * 1000)) {
@@ -4009,7 +4029,8 @@ function applyAdvancedFilters() {
         let bestIdx = 0;
         let minDiff = Infinity;
         for (let i = 0; i < STATE.data.times.length; i++) {
-            const t = new Date(STATE.data.times[i]).getTime();
+            const raw = STATE.data.times[i];
+            const t = new Date(raw.includes('+') || raw.endsWith('Z') ? raw : raw + '+05:30').getTime();
             const diff = Math.abs(t - nowMs);
             if (diff < minDiff) {
                 minDiff = diff;
@@ -4019,7 +4040,7 @@ function applyAdvancedFilters() {
         return bestIdx;
     }
 
-    // Client-side Open-Meteo direct fetch fallback
+    // Client-side Open-Meteo direct fetch fallback with chunked requests to prevent HTTP 414
     async function fetchDirectFromOpenMeteo() {
         const lats = [];
         const lons = [];
@@ -4031,19 +4052,28 @@ function applyAdvancedFilters() {
                 lons.push(lon.toFixed(3));
             }
         }
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&hourly=precipitation&models=ecmwf_ifs&timezone=Asia/Colombo&forecast_days=4`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
-        const json = await res.json();
-        if (!Array.isArray(json) || !json[0] || !json[0].hourly || !json[0].hourly.time) {
-            throw new Error('Invalid Open-Meteo response structure');
+
+        const CHUNK_SIZE = 350;
+        const allPoints = [];
+        for (let i = 0; i < lats.length; i += CHUNK_SIZE) {
+            const chunkLats = lats.slice(i, i + CHUNK_SIZE);
+            const chunkLons = lons.slice(i, i + CHUNK_SIZE);
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${chunkLats.join(',')}&longitude=${chunkLons.join(',')}&hourly=precipitation&models=ecmwf_ifs&timezone=Asia/Colombo&past_days=1&forecast_days=4`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
+            const json = await res.json();
+            if (!Array.isArray(json) || !json[0] || !json[0].hourly || !json[0].hourly.time) {
+                throw new Error('Invalid Open-Meteo response structure');
+            }
+            allPoints.push(...json);
         }
-        const times = json[0].hourly.time;
+
+        const times = allPoints[0].hourly.time;
         const frames = [];
         for (let h = 0; h < times.length; h++) {
             const frame = [];
-            for (let p = 0; p < json.length; p++) {
-                frame.push(Math.round((json[p].hourly.precipitation[h] || 0) * 10) / 10);
+            for (let p = 0; p < allPoints.length; p++) {
+                frame.push(Math.round((allPoints[p].hourly.precipitation[h] || 0) * 10) / 10);
             }
             frames.push(frame);
         }
@@ -4053,7 +4083,8 @@ function applyAdvancedFilters() {
             rows: ROWS,
             cols: COLS,
             times: times,
-            frames: frames
+            frames: frames,
+            updated_at: new Date().toISOString()
         };
     }
 
@@ -4129,7 +4160,7 @@ function applyAdvancedFilters() {
 
         if (STATE.data && STATE.data.times && STATE.data.times[STATE.currentHour]) {
             const rawTime = STATE.data.times[STATE.currentHour];
-            const d = new Date(rawTime);
+            const d = new Date(rawTime.includes('+') || rawTime.endsWith('Z') ? rawTime : rawTime + '+05:30');
             const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const dayStr = days[d.getDay()];
@@ -4218,19 +4249,23 @@ function applyAdvancedFilters() {
         // Index 0 is NOW!
         if (d1) d1.textContent = 'NOW';
 
+        function parseSafeDate(tStr) {
+            return new Date(tStr.includes('+') || tStr.endsWith('Z') ? tStr : tStr + '+05:30');
+        }
+
         const step24 = Math.min(24, STATE.data.times.length - 1);
         if (STATE.data.times[step24] && d2) {
-            const dt2 = new Date(STATE.data.times[step24]);
+            const dt2 = parseSafeDate(STATE.data.times[step24]);
             d2.textContent = `+24h (${days[dt2.getDay()]})`;
         }
         const step48 = Math.min(48, STATE.data.times.length - 1);
         if (STATE.data.times[step48] && d3) {
-            const dt3 = new Date(STATE.data.times[step48]);
+            const dt3 = parseSafeDate(STATE.data.times[step48]);
             d3.textContent = `+48h (${days[dt3.getDay()]})`;
         }
         const step72 = Math.min(72, STATE.data.times.length - 1);
         if (STATE.data.times[step72] && d4) {
-            const dt4 = new Date(STATE.data.times[step72]);
+            const dt4 = parseSafeDate(STATE.data.times[step72]);
             d4.textContent = `+72h (${days[dt4.getDay()]})`;
         }
     }
@@ -4354,7 +4389,7 @@ function applyAdvancedFilters() {
 
         if (newMode === 'rate') {
             if (btnRate) btnRate.classList.add('active');
-            if (legendLabel) legendLabel.textContent = 'Precipitation (mm/h):';
+            if (legendLabel) legendLabel.textContent = 'Predicted Intensity (mm/h):';
             if (ticksWrap) {
                 ticksWrap.innerHTML = `
                     <span>0.1</span>
@@ -4369,7 +4404,7 @@ function applyAdvancedFilters() {
             }
         } else if (newMode === 'acc3') {
             if (btnAcc3) btnAcc3.classList.add('active');
-            if (legendLabel) legendLabel.textContent = '3h Rate (mm):';
+            if (legendLabel) legendLabel.textContent = '3h Predicted Accumulation (mm):';
             if (ticksWrap) {
                 ticksWrap.innerHTML = `
                     <span>0.5</span>
@@ -4384,7 +4419,7 @@ function applyAdvancedFilters() {
             }
         } else if (newMode === 'acc24') {
             if (btnAcc24) btnAcc24.classList.add('active');
-            if (legendLabel) legendLabel.textContent = '24h Total (mm):';
+            if (legendLabel) legendLabel.textContent = '24h Predicted Accumulation (mm):';
             if (ticksWrap) {
                 ticksWrap.innerHTML = `
                     <span>2</span>
@@ -4447,11 +4482,20 @@ function applyAdvancedFilters() {
         const checkbox = document.getElementById('layer-ecmwf-rain');
         if (!checkbox || !checkbox.checked) return;
 
-        // Don't intercept clicks on existing inspection or station points
+        // Don't intercept clicks while measuring tool is active
+        if (typeof isMeasuring !== 'undefined' && isMeasuring) return;
+
+        // Don't intercept clicks on existing inspection or station points (use a touch-friendly bbox)
         try {
-            const pointLayers = ['inspection_points', 'drone_surveys_points', 'satellite_points', 'arg_locations_points'].filter(id => map.getLayer(id));
+            const pointLayers = ['inspection_points', 'drone_surveys_points', 'satellite_points', 'arg_locations_points']
+                .filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
             if (pointLayers.length > 0) {
-                const hits = map.queryRenderedFeatures(e.point, { layers: pointLayers });
+                const radius = 16;
+                const bbox = [
+                    [e.point.x - radius, e.point.y - radius],
+                    [e.point.x + radius, e.point.y + radius]
+                ];
+                const hits = map.queryRenderedFeatures(bbox, { layers: pointLayers });
                 if (hits && hits.length > 0) return;
             }
         } catch (_) {}
@@ -4461,34 +4505,58 @@ function applyAdvancedFilters() {
         const res = queryRainfallAtCoord(lng, lat);
         if (!res) return;
 
-        let alertBadge = '<span class="weather-popup-alert" style="background:rgba(34,197,94,0.2); color:#4ade80;">✅ Normal / Below Warning Level</span>';
+        const rawTime = res.time;
+        const d = new Date(rawTime.includes('+') || rawTime.endsWith('Z') ? rawTime : rawTime + '+05:30');
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const dayStr = days[d.getDay()];
+        const dateStr = d.getDate();
+        const monStr = months[d.getMonth()];
+        const hourStr = String(d.getHours()).padStart(2, '0') + ':00';
+        const formattedTime = `${dayStr} ${dateStr} ${monStr} · ${hourStr}`;
+        const offsetHours = STATE.currentHour;
+        const offsetLabel = offsetHours === 0 ? 'NOW' : `+${offsetHours}h forecast`;
+
+        let alertBadge = '<span class="weather-popup-alert" style="background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">✅ Predicted 24h: Normal / Below Warning Level (&lt;75mm)</span>';
         if (res.acc24 >= 150) {
-            alertBadge = '<span class="weather-popup-alert" style="background:rgba(239,68,68,0.25); color:#f87171; border:1px solid #ef4444;">🛑 Level 3: Evacuation Alert (≥150mm)</span>';
+            alertBadge = '<span class="weather-popup-alert" style="background:rgba(239,68,68,0.25); color:#f87171; border:1px solid #ef4444;">🛑 Predicted 24h: Level 3 Evacuation Alert (≥150mm)</span>';
         } else if (res.acc24 >= 100) {
-            alertBadge = '<span class="weather-popup-alert" style="background:rgba(249,115,22,0.25); color:#fb923c; border:1px solid #f97316;">🚨 Level 2: Warning Alert (≥100mm)</span>';
+            alertBadge = '<span class="weather-popup-alert" style="background:rgba(249,115,22,0.25); color:#fb923c; border:1px solid #f97316;">🚨 Predicted 24h: Level 2 Warning Alert (≥100mm)</span>';
         } else if (res.acc24 >= 75) {
-            alertBadge = '<span class="weather-popup-alert" style="background:rgba(234,179,8,0.25); color:#facc15; border:1px solid #eab308;">⚠️ Level 1: Watch Alert (≥75mm)</span>';
+            alertBadge = '<span class="weather-popup-alert" style="background:rgba(234,179,8,0.25); color:#facc15; border:1px solid #eab308;">⚠️ Predicted 24h: Level 1 Watch Alert (≥75mm)</span>';
         }
 
         const html = `
-            <div class="weather-map-popup">
-                <div class="weather-popup-title">🌧️ ECMWF 9 km Rain Forecast</div>
-                <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:6px;">${res.time} · Lat ${lat.toFixed(3)}, Lon ${lng.toFixed(3)}</div>
-                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin: 6px 0; background:rgba(30,41,59,0.5); padding:6px 8px; border-radius:8px;">
+            <div class="weather-map-popup" style="min-width:270px; max-width:320px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+                    <div class="weather-popup-title" style="font-size:0.86rem; font-weight:700; color:#38bdf8; margin:0;">🌧️ ECMWF Predicted Rain</div>
+                    <span style="font-size:0.6rem; background:rgba(14,165,233,0.2); color:#38bdf8; padding:1px 5px; border-radius:4px; border:1px solid rgba(14,165,233,0.4); font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">Forecast</span>
+                </div>
+                <div style="font-size:0.73rem; color:#cbd5e1; margin-bottom:6px;">
+                    📅 <b>Forecast for:</b> <span style="color:#f8fafc; font-weight:600;">${formattedTime}</span> <span style="color:#38bdf8; font-weight:600;">(${offsetLabel})</span>
+                    <span style="color:#94a3b8; display:block; font-size:0.65rem; margin-top:2px;">📍 Lat ${lat.toFixed(3)}, Lon ${lng.toFixed(3)}</span>
+                </div>
+                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; margin: 6px 0; background:rgba(30,41,59,0.7); padding:8px 6px; border-radius:8px; border:1px solid rgba(255,255,255,0.08); text-align:center;">
                     <div>
-                        <span style="font-size:0.62rem; color:#94a3b8; display:block;">1h Rate</span>
-                        <b style="font-size:1.05rem; color:#38bdf8;">${res.rate} mm/h</b>
+                        <span style="font-size:0.62rem; color:#93c5fd; font-weight:600; display:block;">1h Predicted</span>
+                        <b style="font-size:1.1rem; color:#38bdf8;">${res.rate} <span style="font-size:0.68rem; font-weight:normal;">mm/h</span></b>
+                        <span style="font-size:0.56rem; color:#94a3b8; display:block; margin-top:2px;">(in this 1h)</span>
+                    </div>
+                    <div style="border-left:1px solid rgba(255,255,255,0.08); border-right:1px solid rgba(255,255,255,0.08);">
+                        <span style="font-size:0.62rem; color:#93c5fd; font-weight:600; display:block;">3h Predicted</span>
+                        <b style="font-size:1.1rem; color:#67e8f9;">${res.acc3} <span style="font-size:0.68rem; font-weight:normal;">mm</span></b>
+                        <span style="font-size:0.56rem; color:#94a3b8; display:block; margin-top:2px;">(3h total to time)</span>
                     </div>
                     <div>
-                        <span style="font-size:0.62rem; color:#94a3b8; display:block;">3h Rate</span>
-                        <b style="font-size:1.05rem; color:#67e8f9;">${res.acc3} mm</b>
-                    </div>
-                    <div>
-                        <span style="font-size:0.62rem; color:#94a3b8; display:block;">24h Total</span>
-                        <b style="font-size:1.05rem; color:#f8fafc;">${res.acc24} mm</b>
+                        <span style="font-size:0.62rem; color:#93c5fd; font-weight:600; display:block;">24h Predicted</span>
+                        <b style="font-size:1.1rem; color:#f8fafc;">${res.acc24} <span style="font-size:0.68rem; font-weight:normal;">mm</span></b>
+                        <span style="font-size:0.56rem; color:#94a3b8; display:block; margin-top:2px;">(24h rolling total)</span>
                     </div>
                 </div>
-                <div>${alertBadge}</div>
+                <div style="margin-top:6px;">${alertBadge}</div>
+                <div style="font-size:0.62rem; color:#94a3b8; margin-top:6px; line-height:1.3; border-top:1px solid rgba(255,255,255,0.08); padding-top:4px;">
+                    🔮 <i><b>Model Simulation:</b> Generated by ECMWF IFS (9 km). These are computer forecast predictions, <b>not</b> physical rain gauge readings. Compare with ARG Rain Gauges for real-time observed ground rainfall.</i>
+                </div>
             </div>
         `;
 

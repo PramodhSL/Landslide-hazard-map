@@ -2521,6 +2521,19 @@
             background: rgba(248, 113, 113, 0.18);
         }
 
+        .weather-disclaimer-pill {
+            font-size: 0.62rem;
+            color: #93c5fd;
+            background: rgba(30, 58, 138, 0.35);
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-weight: 500;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+        }
+
         /* Weather Popup on Map Click */
         .weather-map-popup .maplibregl-popup-content {
             background: rgba(11, 17, 32, 0.95);
@@ -2674,9 +2687,17 @@
             transition: bottom 0.3s ease, opacity 0.35s ease, transform 0.35s ease !important;
         }
 
+        body.weather-active #inspection-zoom-hint {
+            bottom: 215px !important;
+        }
+
         @media (max-width: 768px) {
             #inspection-zoom-hint {
                 bottom: 220px !important;
+            }
+
+            body.weather-active #inspection-zoom-hint {
+                bottom: 260px !important;
             }
 
             body.weather-active .mobile-stats-strip,
