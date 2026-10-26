@@ -3849,7 +3849,7 @@ function applyAdvancedFilters() {
         }
     }
 
-    // Precalculate rolling 3h and 24h accumulation for each forecast hour
+    // Precalculate forward 3h and 24h accumulated predictions for each forecast hour
     function calculateAccumulation() {
         if (!STATE.data || !STATE.data.frames) return;
         const numHours = STATE.data.frames.length;
@@ -3858,10 +3858,10 @@ function applyAdvancedFilters() {
         STATE.acc24Frames = [];
 
         for (let h = 0; h < numHours; h++) {
-            // 3-hour accumulation (rolling sum of up to 3 hours: [h-2, h-1, h])
-            const start3H = Math.max(0, h - 2);
+            // 3-hour forward accumulation (predicted sum of upcoming 3 hours: [h, h+1, h+2])
+            const end3H = Math.min(numHours - 1, h + 2);
             const acc3 = new Float32Array(numPts);
-            for (let ph = start3H; ph <= h; ph++) {
+            for (let ph = h; ph <= end3H; ph++) {
                 const f = STATE.data.frames[ph];
                 for (let p = 0; p < numPts; p++) acc3[p] += f[p];
             }
@@ -3869,11 +3869,10 @@ function applyAdvancedFilters() {
             for (let p = 0; p < numPts; p++) rounded3[p] = Math.round(acc3[p] * 10) / 10;
             STATE.acc3Frames.push(rounded3);
 
-            // 24-hour accumulation (rolling sum of up to 24 hours: [h-23 ... h])
-            // Thanks to past_days=1, h-23 is fully populated even for NOW!
-            const start24H = Math.max(0, h - 23);
+            // 24-hour forward accumulation (predicted sum of upcoming 24 hours: [h ... h+23])
+            const end24H = Math.min(numHours - 1, h + 23);
             const acc24 = new Float32Array(numPts);
-            for (let ph = start24H; ph <= h; ph++) {
+            for (let ph = h; ph <= end24H; ph++) {
                 const f = STATE.data.frames[ph];
                 for (let p = 0; p < numPts; p++) acc24[p] += f[p];
             }
@@ -3989,20 +3988,18 @@ function applyAdvancedFilters() {
             if (STATE.data.rows) ROWS = STATE.data.rows;
             if (STATE.data.cols) COLS = STATE.data.cols;
             
-            // Step 1: Precalculate rolling accumulations across full dataset
-            calculateAccumulation();
-
-            // Step 2: Find current hour index
+            // Step 1: Find current hour index (NOW)
             const nowIdx = findNowIndex();
 
-            // Step 3: Slice all frames from nowIdx forward so index 0 = NOW!
-            // This eliminates useless past hours and prevents the slider from starting in the middle.
+            // Step 2: Slice all frames from nowIdx forward so index 0 = NOW!
+            // This eliminates past hours completely, keeping purely future forecast frames
             if (nowIdx > 0 && STATE.data.times.length > nowIdx) {
                 STATE.data.times = STATE.data.times.slice(nowIdx);
                 STATE.data.frames = STATE.data.frames.slice(nowIdx);
-                STATE.acc3Frames = STATE.acc3Frames.slice(nowIdx);
-                STATE.acc24Frames = STATE.acc24Frames.slice(nowIdx);
             }
+
+            // Step 3: Precalculate forward 3h and 24h predictions on future forecast frames
+            calculateAccumulation();
 
             STATE.nowIndex = 0;
             STATE.currentHour = 0;
@@ -4235,6 +4232,11 @@ function applyAdvancedFilters() {
                     peakVal.style.color = '#38bdf8';
                 }
             }
+
+            // Keep open popup dynamically synchronized with timeline scrubber
+            if (STATE.activePopup && STATE.activePopup.isOpen() && STATE.lastClickedCoord) {
+                showWeatherPopup(STATE.lastClickedCoord.lng, STATE.lastClickedCoord.lat, true);
+            }
         }
     }
 
@@ -4465,29 +4467,119 @@ function applyAdvancedFilters() {
 
         const rateVal = interp(STATE.data.frames[STATE.currentHour] || []);
         const acc3Val = (STATE.acc3Frames && STATE.acc3Frames[STATE.currentHour]) ?
-                        interp(STATE.acc3Frames[STATE.currentHour]) : (rateVal * 3);
+                        interp(STATE.acc3Frames[STATE.currentHour]) : rateVal;
         const acc24Val = (STATE.acc24Frames && STATE.acc24Frames[STATE.currentHour]) ? 
                         interp(STATE.acc24Frames[STATE.currentHour]) : rateVal;
-
-        // Compute forward 24-hour total (next 24 hours starting from the selected hour)
-        let forward24Val = 0;
-        let forwardHours = 0;
-        if (STATE.data && STATE.data.frames) {
-            const endIdx = Math.min(STATE.data.frames.length - 1, STATE.currentHour + 24);
-            for (let h = STATE.currentHour; h < endIdx; h++) {
-                forward24Val += interp(STATE.data.frames[h]);
-                forwardHours++;
-            }
-        }
 
         return {
             rate: Math.round(rateVal * 10) / 10,
             acc3: Math.round(acc3Val * 10) / 10,
             acc24: Math.round(acc24Val * 10) / 10,
-            forward24: Math.round(forward24Val * 10) / 10,
-            forwardHours: forwardHours,
             time: STATE.data.times[STATE.currentHour]
         };
+    }
+
+    // Display / Refresh Weather Popup at Coordinates
+    function showWeatherPopup(lng, lat, isUpdate = false) {
+        STATE.lastClickedCoord = { lng, lat };
+        const res = queryRainfallAtCoord(lng, lat);
+        if (!res) return;
+
+        const rawTime = res.time;
+        const d = new Date(rawTime.includes('+') || rawTime.endsWith('Z') ? rawTime : rawTime + '+05:30');
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const dayStr = days[d.getDay()];
+        const dateStr = d.getDate();
+        const monStr = months[d.getMonth()];
+        const hourStr = String(d.getHours()).padStart(2, '0') + ':00';
+        const formattedTime = `${dayStr} ${dateStr} ${monStr} · ${hourStr}`;
+        const offsetHours = STATE.currentHour;
+        const offsetLabel = offsetHours === 0 ? 'NOW' : `+${offsetHours}h forecast`;
+
+        // Explicit forward time spans starting from the selected forecast hour
+        const curMs = d.getTime();
+        const dEnd1h = new Date(curMs + 3600000);
+        const dEnd3h = new Date(curMs + 3 * 3600000);
+        const dEnd24h = new Date(curMs + 24 * 3600000);
+
+        const fmtH = (date) => String(date.getHours()).padStart(2, '0') + ':00';
+        const span1h = `${fmtH(d)} → ${fmtH(dEnd1h)}`;
+        const span3h = `${fmtH(d)} → ${fmtH(dEnd3h)}`;
+        const span24h = `${dayStr} ${fmtH(d)} → ${days[dEnd24h.getDay()]} ${fmtH(dEnd24h)}`;
+
+        let alertBadge = '<span class="weather-popup-alert" style="display:block; text-align:center; padding:5px 8px; border-radius:6px; font-weight:600; font-size:0.72rem; background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.35);">✅ Predicted 24h: Normal / Below Warning Level (&lt;75mm)</span>';
+        if (res.acc24 >= 150) {
+            alertBadge = '<span class="weather-popup-alert" style="display:block; text-align:center; padding:5px 8px; border-radius:6px; font-weight:600; font-size:0.72rem; background:rgba(239,68,68,0.25); color:#f87171; border:1px solid #ef4444;">🛑 Predicted 24h: Level 3 Evacuation Alert (≥150mm)</span>';
+        } else if (res.acc24 >= 100) {
+            alertBadge = '<span class="weather-popup-alert" style="display:block; text-align:center; padding:5px 8px; border-radius:6px; font-weight:600; font-size:0.72rem; background:rgba(249,115,22,0.25); color:#fb923c; border:1px solid #f97316;">🚨 Predicted 24h: Level 2 Warning Alert (≥100mm)</span>';
+        } else if (res.acc24 >= 75) {
+            alertBadge = '<span class="weather-popup-alert" style="display:block; text-align:center; padding:5px 8px; border-radius:6px; font-weight:600; font-size:0.72rem; background:rgba(234,179,8,0.25); color:#facc15; border:1px solid #eab308;">⚠️ Predicted 24h: Level 1 Watch Alert (≥75mm)</span>';
+        }
+
+        const html = `
+            <div class="weather-map-popup-inner" style="min-width:320px; max-width:365px; width:340px; box-sizing:border-box;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; padding-right:28px;">
+                    <div class="weather-popup-title" style="font-size:0.9rem; font-weight:700; color:#38bdf8; margin:0; display:flex; align-items:center; gap:5px;">
+                        <span>🌧️ ECMWF Predicted Rain</span>
+                    </div>
+                    <span style="font-size:0.6rem; background:rgba(14,165,233,0.2); color:#38bdf8; padding:2px 6px; border-radius:4px; border:1px solid rgba(14,165,233,0.4); font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Forecast</span>
+                </div>
+                <div style="font-size:0.74rem; color:#cbd5e1; margin-bottom:8px; line-height:1.4;">
+                    <div>📅 <b>Forecast for:</b> <span style="color:#f8fafc; font-weight:600;">${formattedTime}</span> <span style="color:#38bdf8; font-weight:600;">(${offsetLabel})</span></div>
+                    <div style="color:#94a3b8; font-size:0.67rem; margin-top:2px;">📍 Lat ${lat.toFixed(3)}, Lon ${lng.toFixed(3)}</div>
+                </div>
+                
+                <!-- 3 Forward Predicted Metric Cards -->
+                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; margin: 6px 0; background:rgba(30,41,59,0.7); padding:8px 6px; border-radius:8px; border:1px solid rgba(255,255,255,0.08); text-align:center;">
+                    <div>
+                        <span style="font-size:0.63rem; color:#93c5fd; font-weight:600; display:block;">1h Predicted</span>
+                        <b style="font-size:1.15rem; color:#38bdf8; display:block; margin:2px 0;">${res.rate} <span style="font-size:0.68rem; font-weight:normal;">mm</span></b>
+                        <span style="font-size:0.56rem; color:#67e8f9; display:block;">${span1h}</span>
+                        <span style="font-size:0.54rem; color:#94a3b8; display:block;">(upcoming 1h)</span>
+                    </div>
+                    <div style="border-left:1px solid rgba(255,255,255,0.08); border-right:1px solid rgba(255,255,255,0.08);">
+                        <span style="font-size:0.63rem; color:#93c5fd; font-weight:600; display:block;">3h Predicted</span>
+                        <b style="font-size:1.15rem; color:#67e8f9; display:block; margin:2px 0;">${res.acc3} <span style="font-size:0.68rem; font-weight:normal;">mm</span></b>
+                        <span style="font-size:0.56rem; color:#67e8f9; display:block;">${span3h}</span>
+                        <span style="font-size:0.54rem; color:#94a3b8; display:block;">(next 3h total)</span>
+                    </div>
+                    <div>
+                        <span style="font-size:0.63rem; color:#93c5fd; font-weight:600; display:block;">24h Predicted</span>
+                        <b style="font-size:1.15rem; color:#f8fafc; display:block; margin:2px 0;">${res.acc24} <span style="font-size:0.68rem; font-weight:normal;">mm</span></b>
+                        <span style="font-size:0.56rem; color:#facc15; display:block; font-weight:600;">Next 24h</span>
+                        <span style="font-size:0.54rem; color:#94a3b8; display:block;">(24h total)</span>
+                    </div>
+                </div>
+
+                <!-- Forward 24h Forecast Window Box -->
+                <div style="background:rgba(15,23,42,0.6); border:1px solid rgba(56,189,248,0.25); border-radius:6px; padding:6px 10px; margin:6px 0; font-size:0.66rem; color:#cbd5e1; line-height:1.45;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="color:#94a3b8;">🔮 <b>24h Forecast Window:</b></span>
+                        <span style="color:#38bdf8; font-weight:700;">${span24h}</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+                        <span style="color:#94a3b8;">🌧️ <b>Total Rain Expected:</b></span>
+                        <span style="color:#f8fafc; font-weight:700;">${res.acc24} mm</span>
+                    </div>
+                </div>
+
+                <div style="margin-top:6px;">${alertBadge}</div>
+                <div style="font-size:0.61rem; color:#94a3b8; margin-top:6px; line-height:1.35; border-top:1px solid rgba(255,255,255,0.08); padding-top:5px;">
+                    💡 <i><b>ECMWF 9km Numerical Weather Prediction:</b> All values show forward predicted rainfall from the selected forecast hour.</i>
+                </div>
+            </div>
+        `;
+
+        if (isUpdate && STATE.activePopup && STATE.activePopup.isOpen()) {
+            STATE.activePopup.setHTML(html);
+        } else {
+            if (STATE.activePopup) STATE.activePopup.remove();
+            STATE.activePopup = new maplibregl.Popup({ className: 'weather-map-popup', maxWidth: '380px' })
+                .setLngLat([lng, lat])
+                .setHTML(html)
+                .addTo(map);
+        }
     }
 
     // Map Click Inspector
@@ -4513,104 +4605,7 @@ function applyAdvancedFilters() {
             }
         } catch (_) {}
 
-        const lng = e.lngLat.lng;
-        const lat = e.lngLat.lat;
-        const res = queryRainfallAtCoord(lng, lat);
-        if (!res) return;
-
-        const rawTime = res.time;
-        const d = new Date(rawTime.includes('+') || rawTime.endsWith('Z') ? rawTime : rawTime + '+05:30');
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const dayStr = days[d.getDay()];
-        const dateStr = d.getDate();
-        const monStr = months[d.getMonth()];
-        const hourStr = String(d.getHours()).padStart(2, '0') + ':00';
-        const formattedTime = `${dayStr} ${dateStr} ${monStr} · ${hourStr}`;
-        const offsetHours = STATE.currentHour;
-        const offsetLabel = offsetHours === 0 ? 'NOW' : `+${offsetHours}h forecast`;
-
-        // Calculate explicit time spans for retrospective accumulation
-        const curMs = d.getTime();
-        const dStart1h = new Date(curMs - 3600000);
-        const dStart3h = new Date(curMs - 3 * 3600000);
-        const dStart24h = new Date(curMs - 24 * 3600000);
-        const dEndFwd24h = new Date(curMs + (res.forwardHours || 24) * 3600000);
-
-        const fmtH = (date) => String(date.getHours()).padStart(2, '0') + ':00';
-        const span1h = `${fmtH(dStart1h)} → ${fmtH(d)}`;
-        const span3h = `${fmtH(dStart3h)} → ${fmtH(d)}`;
-        const span24h = `${days[dStart24h.getDay()]} ${fmtH(dStart24h)} → ${dayStr} ${fmtH(d)}`;
-        const spanFwd24h = `${dayStr} ${fmtH(d)} → ${days[dEndFwd24h.getDay()]} ${fmtH(dEndFwd24h)}`;
-
-        let alertBadge = '<span class="weather-popup-alert" style="display:block; text-align:center; padding:4px 8px; border-radius:6px; font-weight:600; font-size:0.7rem; background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.35);">✅ Predicted 24h: Normal / Below Warning Level (&lt;75mm)</span>';
-        if (res.acc24 >= 150) {
-            alertBadge = '<span class="weather-popup-alert" style="display:block; text-align:center; padding:4px 8px; border-radius:6px; font-weight:600; font-size:0.7rem; background:rgba(239,68,68,0.25); color:#f87171; border:1px solid #ef4444;">🛑 Predicted 24h: Level 3 Evacuation Alert (≥150mm)</span>';
-        } else if (res.acc24 >= 100) {
-            alertBadge = '<span class="weather-popup-alert" style="display:block; text-align:center; padding:4px 8px; border-radius:6px; font-weight:600; font-size:0.7rem; background:rgba(249,115,22,0.25); color:#fb923c; border:1px solid #f97316;">🚨 Predicted 24h: Level 2 Warning Alert (≥100mm)</span>';
-        } else if (res.acc24 >= 75) {
-            alertBadge = '<span class="weather-popup-alert" style="display:block; text-align:center; padding:4px 8px; border-radius:6px; font-weight:600; font-size:0.7rem; background:rgba(234,179,8,0.25); color:#facc15; border:1px solid #eab308;">⚠️ Predicted 24h: Level 1 Watch Alert (≥75mm)</span>';
-        }
-
-        const html = `
-            <div class="weather-map-popup-inner" style="min-width:320px; max-width:365px; width:340px; box-sizing:border-box;">
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; padding-right:28px;">
-                    <div class="weather-popup-title" style="font-size:0.9rem; font-weight:700; color:#38bdf8; margin:0; display:flex; align-items:center; gap:5px;">
-                        <span>🌧️ ECMWF Predicted Rain</span>
-                    </div>
-                    <span style="font-size:0.6rem; background:rgba(14,165,233,0.2); color:#38bdf8; padding:2px 6px; border-radius:4px; border:1px solid rgba(14,165,233,0.4); font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Forecast</span>
-                </div>
-                <div style="font-size:0.74rem; color:#cbd5e1; margin-bottom:8px; line-height:1.4;">
-                    <div>📅 <b>Forecast for:</b> <span style="color:#f8fafc; font-weight:600;">${formattedTime}</span> <span style="color:#38bdf8; font-weight:600;">(${offsetLabel})</span></div>
-                    <div style="color:#94a3b8; font-size:0.67rem; margin-top:2px;">📍 Lat ${lat.toFixed(3)}, Lon ${lng.toFixed(3)}</div>
-                </div>
-                
-                <!-- 3 Metric Cards with explicit time ranges -->
-                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; margin: 6px 0; background:rgba(30,41,59,0.7); padding:8px 6px; border-radius:8px; border:1px solid rgba(255,255,255,0.08); text-align:center;">
-                    <div>
-                        <span style="font-size:0.63rem; color:#93c5fd; font-weight:600; display:block;">1h Rain Rate</span>
-                        <b style="font-size:1.15rem; color:#38bdf8; display:block; margin:2px 0;">${res.rate} <span style="font-size:0.68rem; font-weight:normal;">mm/h</span></b>
-                        <span style="font-size:0.56rem; color:#67e8f9; display:block;">${span1h}</span>
-                        <span style="font-size:0.54rem; color:#94a3b8; display:block;">(in this 1h)</span>
-                    </div>
-                    <div style="border-left:1px solid rgba(255,255,255,0.08); border-right:1px solid rgba(255,255,255,0.08);">
-                        <span style="font-size:0.63rem; color:#93c5fd; font-weight:600; display:block;">3h Past Total</span>
-                        <b style="font-size:1.15rem; color:#67e8f9; display:block; margin:2px 0;">${res.acc3} <span style="font-size:0.68rem; font-weight:normal;">mm</span></b>
-                        <span style="font-size:0.56rem; color:#67e8f9; display:block;">${span3h}</span>
-                        <span style="font-size:0.54rem; color:#94a3b8; display:block;">(3h up to time)</span>
-                    </div>
-                    <div>
-                        <span style="font-size:0.63rem; color:#93c5fd; font-weight:600; display:block;">24h Past Total</span>
-                        <b style="font-size:1.15rem; color:#f8fafc; display:block; margin:2px 0;">${res.acc24} <span style="font-size:0.68rem; font-weight:normal;">mm</span></b>
-                        <span style="font-size:0.56rem; color:#facc15; display:block; font-weight:600;">Past 24h</span>
-                        <span style="font-size:0.54rem; color:#94a3b8; display:block;">(rolling sum)</span>
-                    </div>
-                </div>
-
-                <!-- Clear Time Window Explanation Box -->
-                <div style="background:rgba(15,23,42,0.6); border:1px solid rgba(56,189,248,0.2); border-radius:6px; padding:6px 8px; margin:6px 0; font-size:0.65rem; color:#cbd5e1; line-height:1.4;">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
-                        <span style="color:#94a3b8;">🌧️ <b>Past 24h Window:</b></span>
-                        <span style="color:#f8fafc; font-weight:600;">${span24h}</span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between;">
-                        <span style="color:#94a3b8;">🔮 <b>Next 24h Outlook:</b></span>
-                        <span style="color:#38bdf8; font-weight:600;">${res.forward24} mm <span style="color:#94a3b8; font-weight:normal; font-size:0.58rem;">(${spanFwd24h})</span></span>
-                    </div>
-                </div>
-
-                <div style="margin-top:6px;">${alertBadge}</div>
-                <div style="font-size:0.61rem; color:#94a3b8; margin-top:6px; line-height:1.35; border-top:1px solid rgba(255,255,255,0.08); padding-top:5px;">
-                    💡 <i><b>Landslide Hazard Standard:</b> 24h rainfall is the <b>past 24h accumulation</b> up to the selected hour.</i>
-                </div>
-            </div>
-        `;
-
-        if (STATE.activePopup) STATE.activePopup.remove();
-        STATE.activePopup = new maplibregl.Popup({ className: 'weather-map-popup', maxWidth: '380px' })
-            .setLngLat([lng, lat])
-            .setHTML(html)
-            .addTo(map);
+        showWeatherPopup(e.lngLat.lng, e.lngLat.lat, false);
     }
 
     // Wire up all UI Event Listeners
