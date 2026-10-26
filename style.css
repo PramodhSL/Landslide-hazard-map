@@ -2326,6 +2326,28 @@
             border-color: rgba(56, 189, 248, 0.4);
         }
 
+        .weather-loop-btn {
+            font-size: 0.8rem;
+            color: #64748b;
+            border-color: rgba(148, 163, 184, 0.15);
+            opacity: 0.65;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .weather-loop-btn:hover {
+            opacity: 0.95;
+            color: #94a3b8;
+            border-color: rgba(148, 163, 184, 0.35);
+        }
+
+        .weather-loop-btn.active {
+            opacity: 1;
+            color: #38bdf8;
+            background: rgba(14, 165, 233, 0.18);
+            border-color: rgba(56, 189, 248, 0.6);
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+        }
+
         .weather-timeline-col {
             flex: 1;
             display: flex;

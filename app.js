@@ -2741,7 +2741,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v74'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v75'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2883,7 +2883,7 @@ async function loadDashboardAndSearchData() {
     try {
         // PERF-MOB-3: Use default browser cache (IDB version-stamp already handles staleness detection).
         // cache:'no-cache' was forcing a full network revalidation on every single page load.
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v74';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v75';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'default' });
         if (res.ok) {
             const freshStats = await res.json();
@@ -3628,6 +3628,7 @@ function applyAdvancedFilters() {
         currentHour: 0,
         mode: 'rate', // 'rate' (1h mm/h), 'acc3' (3h accumulated mm), or 'acc24' (24h accumulated mm)
         isPlaying: false,
+        isLooping: true,
         playInterval: null,
         opacity: 0.75,
         acc3Frames: null,
@@ -4239,31 +4240,91 @@ function applyAdvancedFilters() {
         if (STATE.isPlaying) {
             pause();
         } else {
+            const totalHours = STATE.data && STATE.data.times ? STATE.data.times.length : 72;
+            // If already at or past the end, restart from the beginning (Run Again!)
+            if (STATE.currentHour >= totalHours - 1) {
+                STATE.currentHour = 0;
+                updateUI();
+                renderFrame(STATE.currentHour);
+            }
             play();
         }
     }
 
     function play() {
+        const totalHours = STATE.data && STATE.data.times ? STATE.data.times.length : 72;
+        // If at the end, immediately rewind to start and run again
+        if (STATE.currentHour >= totalHours - 1) {
+            STATE.currentHour = 0;
+            updateUI();
+            renderFrame(STATE.currentHour);
+        }
+
         STATE.isPlaying = true;
         const icon = document.getElementById('weather-play-icon');
         if (icon) icon.textContent = '❚❚';
+        const playBtn = document.getElementById('weather-play-btn');
+        if (playBtn) playBtn.title = 'Pause forecast';
 
         if (STATE.playInterval) clearInterval(STATE.playInterval);
         STATE.playInterval = setInterval(() => {
-            const totalHours = STATE.data && STATE.data.times ? STATE.data.times.length : 72;
-            STATE.currentHour = (STATE.currentHour + 1) % totalHours;
-            updateUI();
-            renderFrame(STATE.currentHour);
+            const numHours = STATE.data && STATE.data.times ? STATE.data.times.length : 72;
+            if (STATE.currentHour + 1 >= numHours) {
+                if (STATE.isLooping) {
+                    // Loop back to NOW (index 0) smoothly
+                    STATE.currentHour = 0;
+                    updateUI();
+                    renderFrame(STATE.currentHour);
+                } else {
+                    // Completed one full run! Stop at the end and present "Run again" state
+                    STATE.currentHour = numHours - 1;
+                    pause();
+                    const pIcon = document.getElementById('weather-play-icon');
+                    if (pIcon) pIcon.textContent = '🔁';
+                    const pBtn = document.getElementById('weather-play-btn');
+                    if (pBtn) pBtn.title = 'Run again from start (NOW)';
+                    updateUI();
+                    renderFrame(STATE.currentHour);
+                }
+            } else {
+                STATE.currentHour += 1;
+                updateUI();
+                renderFrame(STATE.currentHour);
+            }
         }, 750);
     }
 
     function pause() {
         STATE.isPlaying = false;
+        const totalHours = STATE.data && STATE.data.times ? STATE.data.times.length : 72;
+        const isAtEnd = STATE.currentHour >= totalHours - 1;
         const icon = document.getElementById('weather-play-icon');
-        if (icon) icon.textContent = '▶';
+        if (icon) {
+            icon.textContent = (isAtEnd && !STATE.isLooping) ? '🔁' : '▶';
+        }
+        const playBtn = document.getElementById('weather-play-btn');
+        if (playBtn) {
+            playBtn.title = (isAtEnd && !STATE.isLooping) ? 'Run again from start (NOW)' : 'Play forecast';
+        }
         if (STATE.playInterval) {
             clearInterval(STATE.playInterval);
             STATE.playInterval = null;
+        }
+    }
+
+    function toggleLoop() {
+        STATE.isLooping = !STATE.isLooping;
+        const loopBtn = document.getElementById('weather-loop-btn');
+        if (loopBtn) {
+            if (STATE.isLooping) {
+                loopBtn.classList.add('active');
+                loopBtn.title = 'Repeat Mode: Continuous Loop (Click to Play Once)';
+                if (typeof showToast === 'function') showToast('Rainfall animation: Continuous Loop ON', 2000);
+            } else {
+                loopBtn.classList.remove('active');
+                loopBtn.title = 'Repeat Mode: Play Once & Stop (Click to Loop)';
+                if (typeof showToast === 'function') showToast('Rainfall animation: Play Once & Stop', 2000);
+            }
         }
     }
 
@@ -4445,6 +4506,7 @@ function applyAdvancedFilters() {
         const playBtn = document.getElementById('weather-play-btn');
         const prevBtn = document.getElementById('weather-step-prev');
         const nextBtn = document.getElementById('weather-step-next');
+        const loopBtn = document.getElementById('weather-loop-btn');
         const slider = document.getElementById('weather-time-slider');
         const closeBtn = document.getElementById('weather-close-btn');
         const btnRate = document.getElementById('btn-weather-mode-rate');
@@ -4486,6 +4548,7 @@ function applyAdvancedFilters() {
         if (playBtn) playBtn.addEventListener('click', togglePlay);
         if (prevBtn) prevBtn.addEventListener('click', () => step(-1));
         if (nextBtn) nextBtn.addEventListener('click', () => step(1));
+        if (loopBtn) loopBtn.addEventListener('click', toggleLoop);
 
         if (slider) {
             slider.addEventListener('input', (e) => {
