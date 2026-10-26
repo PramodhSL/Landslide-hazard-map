@@ -2656,6 +2656,18 @@
             #inspection-zoom-hint {
                 bottom: 220px !important;
             }
+
+            body.weather-active .mobile-stats-strip,
+            body.weather-active .hr-alert-banner {
+                opacity: 0 !important;
+                pointer-events: none !important;
+                transform: translateY(20px) !important;
+                transition: opacity 0.25s ease, transform 0.25s ease !important;
+            }
+
+            body.weather-active #inspection-zoom-hint {
+                bottom: 255px !important;
+            }
         }
 
 

@@ -3894,10 +3894,14 @@ function applyAdvancedFilters() {
         const tagInfo = document.getElementById('weather-tag-info');
         if (tagInfo) tagInfo.textContent = 'Checking forecast...';
 
-        // 1. Check client-side localStorage cache (2h TTL)
+        // 1. Check client-side localStorage cache (2h TTL) with versioned key to purge old cache
+        const CACHE_KEY = 'ecmwf_rain_cache_v74';
+        const CACHE_TS_KEY = 'ecmwf_rain_ts_v74';
         try {
-            const cachedStr = localStorage.getItem('ecmwf_rain_cache');
-            const cachedTs = parseInt(localStorage.getItem('ecmwf_rain_ts') || '0', 10);
+            localStorage.removeItem('ecmwf_rain_cache');
+            localStorage.removeItem('ecmwf_rain_ts');
+            const cachedStr = localStorage.getItem(CACHE_KEY);
+            const cachedTs = parseInt(localStorage.getItem(CACHE_TS_KEY) || '0', 10);
             if (cachedStr && (Date.now() - cachedTs < 2 * 3600 * 1000)) {
                 const parsed = JSON.parse(cachedStr);
                 if (isDataFresh(parsed)) {
@@ -3936,8 +3940,8 @@ function applyAdvancedFilters() {
                 STATE.data = await fetchDirectFromOpenMeteo();
                 STATE.loaded = true;
                 try {
-                    localStorage.setItem('ecmwf_rain_cache', JSON.stringify(STATE.data));
-                    localStorage.setItem('ecmwf_rain_ts', String(Date.now()));
+                    localStorage.setItem(CACHE_KEY, JSON.stringify(STATE.data));
+                    localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
                 } catch (storeErr) {
                     console.warn('🌧️ [ECMWF] Could not store to localStorage:', storeErr);
                 }
@@ -3947,7 +3951,7 @@ function applyAdvancedFilters() {
                 // Offline fallback: use whatever static data was present
                 if (!STATE.data) {
                     try {
-                        const fallbackResp = await fetch('ecmwf_rain_72h.json?v=' + (window.CACHE_VERSION || '73'));
+                        const fallbackResp = await fetch('ecmwf_rain_72h.json?v=' + (window.CACHE_VERSION || '74'));
                         if (fallbackResp.ok) {
                             STATE.data = await fallbackResp.json();
                             STATE.loaded = true;
@@ -3963,20 +3967,36 @@ function applyAdvancedFilters() {
             if (STATE.data.bounds) BOUNDS = STATE.data.bounds;
             if (STATE.data.rows) ROWS = STATE.data.rows;
             if (STATE.data.cols) COLS = STATE.data.cols;
+            
+            // Step 1: Precalculate rolling accumulations across full dataset
             calculateAccumulation();
-            STATE.nowIndex = findNowIndex();
-            STATE.currentHour = STATE.nowIndex;
+
+            // Step 2: Find current hour index
+            const nowIdx = findNowIndex();
+
+            // Step 3: Slice all frames from nowIdx forward so index 0 = NOW!
+            // This eliminates useless past hours and prevents the slider from starting in the middle.
+            if (nowIdx > 0 && STATE.data.times.length > nowIdx) {
+                STATE.data.times = STATE.data.times.slice(nowIdx);
+                STATE.data.frames = STATE.data.frames.slice(nowIdx);
+                STATE.acc3Frames = STATE.acc3Frames.slice(nowIdx);
+                STATE.acc24Frames = STATE.acc24Frames.slice(nowIdx);
+            }
+
+            STATE.nowIndex = 0;
+            STATE.currentHour = 0;
             const slider = document.getElementById('weather-time-slider');
             if (slider && STATE.data.times) {
+                slider.min = 0;
                 slider.max = STATE.data.times.length - 1;
-                slider.value = STATE.currentHour;
+                slider.value = 0;
             }
             setupTimelineMarkers();
             updateUI();
-            renderFrame(STATE.currentHour);
+            renderFrame(0);
             if (tagInfo) {
                 const isLive = STATE.data.model && STATE.data.model.includes('Direct API');
-                tagInfo.textContent = isLive ? 'ECMWF 9km · Live API' : 'ECMWF IFS 0.1° · 96h';
+                tagInfo.textContent = isLive ? 'ECMWF 9km · Live API' : 'ECMWF IFS 0.1° · 72h+';
             }
         }
     }
@@ -4012,7 +4032,11 @@ function applyAdvancedFilters() {
         }
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&hourly=precipitation&models=ecmwf_ifs&timezone=Asia/Colombo&forecast_days=4`;
         const res = await fetch(url);
+        if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
         const json = await res.json();
+        if (!Array.isArray(json) || !json[0] || !json[0].hourly || !json[0].hourly.time) {
+            throw new Error('Invalid Open-Meteo response structure');
+        }
         const times = json[0].hourly.time;
         const frames = [];
         for (let h = 0; h < times.length; h++) {
@@ -4190,22 +4214,23 @@ function applyAdvancedFilters() {
         const d4 = document.getElementById('mark-day-4');
 
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        // Index 0 is today, Index 24 is tomorrow, Index 48 is day 3, Index 72 is day 4
-        if (STATE.data.times[0] && d1) {
-            const dt1 = new Date(STATE.data.times[0]);
-            d1.textContent = `Today (${days[dt1.getDay()]})`;
+        // Index 0 is NOW!
+        if (d1) d1.textContent = 'NOW';
+
+        const step24 = Math.min(24, STATE.data.times.length - 1);
+        if (STATE.data.times[step24] && d2) {
+            const dt2 = new Date(STATE.data.times[step24]);
+            d2.textContent = `+24h (${days[dt2.getDay()]})`;
         }
-        if (STATE.data.times[24] && d2) {
-            const dt2 = new Date(STATE.data.times[24]);
-            d2.textContent = `Tomorrow (${days[dt2.getDay()]})`;
+        const step48 = Math.min(48, STATE.data.times.length - 1);
+        if (STATE.data.times[step48] && d3) {
+            const dt3 = new Date(STATE.data.times[step48]);
+            d3.textContent = `+48h (${days[dt3.getDay()]})`;
         }
-        if (STATE.data.times[48] && d3) {
-            const dt3 = new Date(STATE.data.times[48]);
-            d3.textContent = `Day 3 (${days[dt3.getDay()]})`;
-        }
-        if (STATE.data.times[72] && d4) {
-            const dt4 = new Date(STATE.data.times[72]);
-            d4.textContent = `Day 4 (${days[dt4.getDay()]})`;
+        const step72 = Math.min(72, STATE.data.times.length - 1);
+        if (STATE.data.times[step72] && d4) {
+            const dt4 = new Date(STATE.data.times[step72]);
+            d4.textContent = `+72h (${days[dt4.getDay()]})`;
         }
     }
 
@@ -4431,11 +4456,13 @@ function applyAdvancedFilters() {
         if (checkbox) {
             checkbox.addEventListener('change', async function () {
                 if (this.checked) {
+                    document.body.classList.add('weather-active');
                     if (player) player.classList.remove('hidden');
                     await loadForecastData();
                     attachMapLayer();
                     renderFrame(STATE.currentHour);
                 } else {
+                    document.body.classList.remove('weather-active');
                     pause();
                     if (player) player.classList.add('hidden');
                     detachMapLayer();
