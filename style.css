@@ -2711,6 +2711,92 @@
             body.weather-active #inspection-zoom-hint {
                 bottom: 255px !important;
             }
+
+            body.weather-active .fab-container {
+                bottom: calc(env(safe-area-inset-bottom, 0px) + 215px) !important;
+                transition: bottom 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+            }
+
+            body.weather-active .compass-indicator {
+                bottom: calc(env(safe-area-inset-bottom, 0px) + 265px) !important;
+                transition: bottom 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+            }
+
+            body.weather-active .controls-panel:not(.collapsed) ~ .weather-player {
+                opacity: 0 !important;
+                pointer-events: none !important;
+                transform: translateX(-50%) translateY(20px) !important;
+                transition: opacity 0.2s ease, transform 0.2s ease !important;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .desktop-only-txt {
+                display: none !important;
+            }
+
+            .weather-map-popup.maplibregl-popup {
+                max-width: calc(100vw - 20px) !important;
+                width: calc(100vw - 20px) !important;
+            }
+
+            .weather-map-popup .maplibregl-popup-content {
+                padding: 10px 10px 8px 10px !important;
+                width: 100% !important;
+                box-sizing: border-box !important;
+            }
+
+            .weather-map-popup .weather-map-popup-inner {
+                width: 100% !important;
+                min-width: unset !important;
+                max-width: 100% !important;
+            }
+
+            .weather-map-popup .weather-popup-title {
+                font-size: 0.84rem !important;
+            }
+        }
+
+        /* ECMWF Weather Forecast Map Popup */
+        .weather-map-popup.maplibregl-popup {
+            max-width: 380px !important;
+            z-index: 25;
+        }
+
+        .weather-map-popup .maplibregl-popup-content {
+            background: rgba(15, 23, 42, 0.95) !important;
+            backdrop-filter: blur(14px) !important;
+            -webkit-backdrop-filter: blur(14px) !important;
+            border: 1px solid rgba(56, 189, 248, 0.35) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 0 20px rgba(56, 189, 248, 0.15) !important;
+            padding: 12px 14px 10px 14px !important;
+            color: #f8fafc !important;
+            box-sizing: border-box !important;
+        }
+
+        .weather-map-popup .maplibregl-popup-tip {
+            border-top-color: rgba(15, 23, 42, 0.95) !important;
+            border-bottom-color: rgba(15, 23, 42, 0.95) !important;
+        }
+
+        .weather-map-popup .maplibregl-popup-close-button {
+            font-size: 1.25rem !important;
+            color: #94a3b8 !important;
+            padding: 2px 7px !important;
+            top: 6px !important;
+            right: 7px !important;
+            line-height: 1 !important;
+            border-radius: 6px !important;
+            transition: color 0.15s, background 0.15s !important;
+            background: transparent !important;
+            border: none !important;
+            cursor: pointer !important;
+        }
+
+        .weather-map-popup .maplibregl-popup-close-button:hover {
+            color: #ffffff !important;
+            background: rgba(255, 255, 255, 0.15) !important;
         }
 
 

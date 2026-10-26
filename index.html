@@ -5,7 +5,7 @@
     <script>
         // Force aggressive cache purge for returning users (safe against mobile storage restriction loops)
         // ⚠️ DEPLOY-1: When bumping version, also update CACHE_NAME in sw.js and style.css?v= in index.html
-        const APP_VERSION = "v76";
+        const APP_VERSION = "v77";
         try {
             if (localStorage.getItem('lhmpVersion') !== APP_VERSION && !window.location.search.includes('update=')) {
                 localStorage.setItem('lhmpVersion', APP_VERSION);
@@ -40,14 +40,14 @@
     <!-- PERF-MOB-5: Preload critical scripts & styles so browser downloads them in parallel with HTML parsing -->
     <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" as="script" crossorigin fetchpriority="high">
     <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" as="style" crossorigin>
-    <link rel="preload" href="pmtiles.js?v=76" as="script">
-    <link rel="preload" href="app.js?v=76" as="script" fetchpriority="high">
+    <link rel="preload" href="pmtiles.js?v=77" as="script">
+    <link rel="preload" href="app.js?v=77" as="script" fetchpriority="high">
     
     <!-- Google Fonts Async Load (Non-render-blocking, zero SW mismatch) -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" crossorigin />
-    <link href="style.css?v=76" rel="stylesheet" />
+    <link href="style.css?v=77" rel="stylesheet" />
 </head>
 
 <body>
@@ -75,7 +75,7 @@
             <div class="app-title-bar">
                 <span class="app-title-icon">🏔️</span>
                 <span class="app-title-text">Landslide Hazard Zonation Map</span>
-                <span class="app-title-badge">Sri Lanka • v76</span>
+                <span class="app-title-badge">Sri Lanka • v77</span>
             </div>
             <div class="search-box">
                 <div class="search-input-wrapper">
@@ -627,9 +627,9 @@
                 </div>
                 
                 <div class="weather-mode-pill">
-                    <button type="button" class="weather-mode-btn active" id="btn-weather-mode-rate" title="Predicted rainfall rate in mm/hour for this 1-hour interval">1h Predicted</button>
-                    <button type="button" class="weather-mode-btn" id="btn-weather-mode-acc3" title="Predicted 3-hour cumulative rainfall ending at selected time">3h Predicted</button>
-                    <button type="button" class="weather-mode-btn" id="btn-weather-mode-acc24" title="Predicted 24-hour cumulative rainfall ending at selected time (NBRO Early Warning Thresholds)">24h Predicted</button>
+                    <button type="button" class="weather-mode-btn active" id="btn-weather-mode-rate" title="Predicted rainfall rate in mm/hour for this 1-hour interval">1h<span class="desktop-only-txt"> Predicted</span></button>
+                    <button type="button" class="weather-mode-btn" id="btn-weather-mode-acc3" title="Predicted 3-hour cumulative rainfall ending at selected time">3h<span class="desktop-only-txt"> Predicted</span></button>
+                    <button type="button" class="weather-mode-btn" id="btn-weather-mode-acc24" title="Predicted 24-hour cumulative rainfall ending at selected time (NBRO Early Warning Thresholds)">24h<span class="desktop-only-txt"> Predicted</span></button>
                 </div>
                 
                 <div class="weather-header-actions">
@@ -663,7 +663,7 @@
                             <span class="weather-offset" id="weather-offset-label">(+0h)</span>
                         </div>
                         <div class="weather-stats-group">
-                            <span class="weather-stat-item" id="weather-peak-stat">Predicted Peak: <b id="weather-peak-val">0.0 mm/h</b></span>
+                            <span class="weather-stat-item" id="weather-peak-stat"><span class="desktop-only-txt">Predicted </span>Peak: <b id="weather-peak-val">0.0 mm/h</b></span>
                         </div>
                     </div>
                     
@@ -683,7 +683,7 @@
             <div class="weather-legend-row">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <div class="weather-legend-label" id="weather-legend-label">Predicted Intensity (mm/h):</div>
-                    <span class="weather-disclaimer-pill" title="Numerical simulation by ECMWF 9 km model. Compare with ARG Rain Gauges for physical sensor observations.">🔮 Model Forecast · Not Gauge Data</span>
+                    <span class="weather-disclaimer-pill" title="Numerical simulation by ECMWF 9 km model. Compare with ARG Rain Gauges for physical sensor observations.">🔮 Model Forecast<span class="desktop-only-txt"> · Not Gauge Data</span></span>
                 </div>
                 <div class="weather-color-bar-wrap">
                     <div class="weather-color-gradient" id="weather-color-bar"></div>
@@ -705,8 +705,8 @@
     <!-- MapLibre GL from CDN for instant cache hits (fallback: local copy in sw.js) -->
     <!-- PERF-MOB-5: defer allows parallel download, executes in order after DOM parse -->
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous" defer></script>
-    <script src="pmtiles.js?v=76" defer></script><!-- L5 FIX: version-busted for proper cache invalidation -->
-    <script src="app.js?v=76" defer></script>
+    <script src="pmtiles.js?v=77" defer></script><!-- L5 FIX: version-busted for proper cache invalidation -->
+    <script src="app.js?v=77" defer></script>
 </body>
 
 </html>
