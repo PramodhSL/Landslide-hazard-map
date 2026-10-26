@@ -1,5 +1,5 @@
 // ⚠️ DEPLOY-1: When bumping version, also update APP_VERSION in index.html (line 7) and style.css?v= in index.html
-const CACHE_NAME = 'landslide-map-v77';
+const CACHE_NAME = 'landslide-map-v78';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',

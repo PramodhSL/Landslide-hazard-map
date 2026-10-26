@@ -2741,7 +2741,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v77'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v78'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2883,7 +2883,7 @@ async function loadDashboardAndSearchData() {
     try {
         // PERF-MOB-3: Use default browser cache (IDB version-stamp already handles staleness detection).
         // cache:'no-cache' was forcing a full network revalidation on every single page load.
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v77';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v78';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'default' });
         if (res.ok) {
             const freshStats = await res.json();
@@ -4601,7 +4601,7 @@ function applyAdvancedFilters() {
 
                 <div style="margin-top:6px;">${alertBadge}</div>
                 <div style="font-size:0.61rem; color:#94a3b8; margin-top:6px; line-height:1.35; border-top:1px solid rgba(255,255,255,0.08); padding-top:5px;">
-                    💡 <i><b>Landslide Hazard Standard:</b> 24h rainfall is the <b>past 24h accumulation</b> up to the selected hour (soil saturation basis for NBRO 75/100/150mm early warnings).</i>
+                    💡 <i><b>Landslide Hazard Standard:</b> 24h rainfall is the <b>past 24h accumulation</b> up to the selected hour.</i>
                 </div>
             </div>
         `;
