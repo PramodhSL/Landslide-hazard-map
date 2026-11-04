@@ -858,6 +858,16 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function getPropVal(props, targetKeys) {
     if (!props) return '';
     for (const key in props) {
@@ -1096,9 +1106,17 @@ function showPopupForFeature(feature, coordinates) {
         if (cleanProps.length === 0) return; // Don't pop up empty or raw internal metadata
         content = '<div class="popup-title">Feature Information</div><div class="popup-info">';
         for (const [k, v] of cleanProps) {
-            content += `<b>${k}:</b> ${v}<br>`;
+            content += `<b>${escapeHtml(k)}:</b> ${escapeHtml(v)}<br>`;
         }
         content += '</div>';
+    }
+
+    if (window.activeFeaturePopup) {
+        window.activeFeaturePopup.remove();
+        window.activeFeaturePopup = null;
+    }
+    if (typeof window.closeWeatherPopup === 'function') {
+        window.closeWeatherPopup();
     }
 
     const popup = new maplibregl.Popup({ 
@@ -1110,6 +1128,7 @@ function showPopupForFeature(feature, coordinates) {
         .setLngLat(coordinates)
         .setHTML(content)
         .addTo(map);
+    window.activeFeaturePopup = popup;
 
     // CRITICAL MOBILE FIX: Stop touch/wheel propagation so swiping scrolls the popup
     // instead of panning the underlying MapLibre canvas!
@@ -1540,7 +1559,8 @@ if (locateBtnGlobal) {
                             const pt = map.project(curPos);
                             const _r = window.innerWidth <= 768 ? 32 : 16; // B7 FIX: match canvas click radius
                             const bbox = [[pt.x - _r, pt.y - _r], [pt.x + _r, pt.y + _r]];
-                            const hits = map.queryRenderedFeatures(bbox, { layers: ['inspection_points', 'satellite_points'] });
+                            const activeLayers = ['inspection_points', 'satellite_points'].filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+                            const hits = activeLayers.length > 0 ? map.queryRenderedFeatures(bbox, { layers: activeLayers }) : [];
                             if (hits && hits.length > 0) {
                                 ev.stopPropagation();
                                 showPopupForFeature(hits[0], [curPos.lng, curPos.lat]);
@@ -1659,20 +1679,27 @@ async function searchLocation(query) {
     const match = query.trim().match(coordPattern);
 
     if (match) {
-        const lat = parseFloat(match[1]);
-        const lon = parseFloat(match[2]);
+        let lat = parseFloat(match[1]);
+        let lon = parseFloat(match[2]);
 
-        if (lon >= 79.5 && lon <= 82.0 && lat >= 5.9 && lat <= 9.9) {
+        // Auto-detect swapped (Lon, Lat) order if user pasted GIS/GeoJSON coordinates
+        if (lat >= 79.2 && lat <= 82.5 && lon >= 5.5 && lon <= 10.1) {
+            const tmp = lat;
+            lat = lon;
+            lon = tmp;
+        }
+
+        if (lon >= 79.2 && lon <= 82.5 && lat >= 5.5 && lat <= 10.1) {
             displayResults([{
                 display_name: `GPS Location - Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}`,
                 lat: lat,
                 lon: lon,
-                isLocal: true,
+                isLocal: false,
                 risk: 'N/A'
             }]);
             return;
         } else {
-            searchResults.innerHTML = '<div class="no-results" style="color:#f59e0b;">⚠️ Coordinates are outside Sri Lanka bounds</div>';
+            searchResults.innerHTML = '<div class="no-results" style="color:#f59e0b;">⚠️ Coordinates are outside Sri Lanka bounds (Lat 5.5–10.1°N, Lon 79.2–82.5°E)</div>';
             return;
         }
     }
@@ -1890,7 +1917,8 @@ function displayResults(results) {
                     const pt = map.project([lon, lat]);
                     const _r = window.innerWidth <= 768 ? 32 : 16; // B7 FIX: match canvas click radius
                     const bbox = [[pt.x - _r, pt.y - _r], [pt.x + _r, pt.y + _r]];
-                    const hits = map.queryRenderedFeatures(bbox, { layers: ['inspection_points', 'satellite_points'] });
+                    const activeLayers = ['inspection_points', 'satellite_points'].filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+                    const hits = activeLayers.length > 0 ? map.queryRenderedFeatures(bbox, { layers: activeLayers }) : [];
                     if (hits && hits.length > 0) {
                         ev.stopPropagation();
                         showPopupForFeature(hits[0], [lon, lat]);
@@ -1901,13 +1929,25 @@ function displayResults(results) {
             searchResults.style.display = 'none';
             searchInput.value = result.isLocal ? result.display_name.split(' - ')[0] : result.display_name.split(',')[0];
 
-            // For local site search, automatically open the rich incident report popup once map finishes flying
+            // For local site search, ensure inspection layer is loaded/visible and automatically open the rich incident report popup
             if (result.isLocal) {
+                if (!window.inspectionLoaded && window.loadInspection) {
+                    window.loadInspection();
+                }
+                const layerBox = document.getElementById('layer-inspection');
+                if (layerBox && !layerBox.checked) {
+                    layerBox.checked = true;
+                    if (map.getLayer('inspection_points')) {
+                        map.setLayoutProperty('inspection_points', 'visibility', 'visible');
+                    }
+                    updateLegend();
+                }
                 setTimeout(() => {
                     const pt = map.project([lon, lat]);
                     const _r = window.innerWidth <= 768 ? 32 : 16; // B7 FIX: match canvas click radius
                     const bbox = [[pt.x - _r, pt.y - _r], [pt.x + _r, pt.y + _r]];
-                    const hits = map.queryRenderedFeatures(bbox, { layers: ['inspection_points', 'satellite_points'] });
+                    const activeLayers = ['inspection_points', 'satellite_points'].filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+                    const hits = activeLayers.length > 0 ? map.queryRenderedFeatures(bbox, { layers: activeLayers }) : [];
                     if (hits && hits.length > 0) {
                         showPopupForFeature(hits[0], [lon, lat]);
                     } else if (searchMarker) {
@@ -2304,7 +2344,7 @@ function updateBookmarkMarkers() {
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
             .setLngLat([b.lon, b.lat])
-            .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(`<b>${b.name}</b>`))
+            .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(`<b>${escapeHtml(b.name)}</b>`))
             .addTo(map);
 
         window.bookmarkMarkers.push(marker);
@@ -2322,8 +2362,8 @@ function renderBookmarks() {
         '<div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
         '<div style="flex:1; display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="flyToBookmark(' + i + ')">' +
         '<div style="color:#f59e0b;">' + ICONS.bookmark + '</div>' +
-        '<div><div style="color:#e2e8f0; font-size:0.85rem; font-weight:500;">' + b.name + '</div>' +
-        '<div style="color:#94a3b8; font-size:0.7rem;">' + b.lat.toFixed(5) + ', ' + b.lon.toFixed(5) + '</div></div></div>' +
+        '<div><div style="color:#e2e8f0; font-size:0.85rem; font-weight:500;">' + escapeHtml(b.name) + '</div>' +
+        '<div style="color:#94a3b8; font-size:0.7rem;">' + Number(b.lat).toFixed(5) + ', ' + Number(b.lon).toFixed(5) + '</div></div></div>' +
         '<button onclick="deleteBookmark(' + i + ')" style="background:none; border:none; color:#ef4444; cursor:pointer; padding:4px;">' + ICONS.trash + '</button></div>'
     ).join('');
 }
@@ -2530,7 +2570,11 @@ document.addEventListener('change', (e) => {
 // =============================================
 // TOAST NOTIFICATION SYSTEM
 // =============================================
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', customDuration = null) {
+    if (typeof type === 'number') {
+        customDuration = type;
+        type = 'info';
+    }
     let toast = document.getElementById('app-toast');
     if (!toast) {
         toast = document.createElement('div');
@@ -2545,7 +2589,7 @@ function showToast(message, type = 'info') {
     toast.innerHTML = message + '<div style="font-size:0.7rem;color:#64748b;margin-top:10px;opacity:0.8;">Tap to dismiss</div>';
     toast.style.opacity = '1';
     toast.style.transform = 'translate(-50%,-50%) scale(1)';
-    const duration = (type === 'warning' || type === 'error') ? 8000 : 5000;
+    const duration = customDuration || ((type === 'warning' || type === 'error') ? 8000 : 5000);
     if (window.toastTimeout) clearTimeout(window.toastTimeout);
     window.toastTimeout = setTimeout(dismissToast, duration);
 }
@@ -2741,7 +2785,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v78'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v82'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2883,7 +2927,7 @@ async function loadDashboardAndSearchData() {
     try {
         // PERF-MOB-3: Use default browser cache (IDB version-stamp already handles staleness detection).
         // cache:'no-cache' was forcing a full network revalidation on every single page load.
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v78';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v82';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'default' });
         if (res.ok) {
             const freshStats = await res.json();
@@ -2912,8 +2956,12 @@ function populateDashboard(data) {
     if (kpiTotal && data.total_mapped != null) {
         kpiTotal.innerHTML  = `${data.total_mapped.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
     }
-    if (kpiHr && data.total_hr != null) {
-        kpiHr.innerHTML     = `${data.total_hr.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
+    const hrLocCount = (data.total_hr_locations != null) ? data.total_hr_locations : data.total_hr;
+    if (kpiHr && hrLocCount != null) {
+        kpiHr.innerHTML     = `${hrLocCount.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>`;
+        if (data.total_hr_families != null && kpiHr.parentElement) {
+            kpiHr.parentElement.title = `High Risk Sites in view (Total Island HR Families: ${data.total_hr_families.toLocaleString()})`;
+        }
     }
     if (kpiMapped) kpiMapped.innerHTML = '—'; // will be updated by viewport stats
     if (tbody && (!localSearchIndex || localSearchIndex.length === 0)) {
@@ -2993,8 +3041,8 @@ function riskBadge(r) {
 // Animate number change
 function animateKpi(el, newVal) {
     if (!el) return;
-    const current = parseInt(el.dataset.val || '0');
-    if (current === newVal) return;
+    const current = parseInt(el.dataset.val || '0', 10);
+    if (el.dataset.val !== undefined && current === newVal) return;
     el.dataset.val = newVal;
     const duration = 400;
     const start = performance.now();
@@ -3029,7 +3077,8 @@ function updateViewportStats() {
             const kpiTotal = DOM.kpiTotal;
             if (kpiTotal) kpiTotal.innerHTML = summaryStats.total_mapped.toLocaleString() +
                 '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>';
-            if (kpiHr) kpiHr.innerHTML = summaryStats.total_hr.toLocaleString() +
+            const hrLocs = (summaryStats.total_hr_locations != null) ? summaryStats.total_hr_locations : summaryStats.total_hr;
+            if (kpiHr && hrLocs != null) kpiHr.innerHTML = hrLocs.toLocaleString() +
                 '<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">total</span>';
         }
         return;
@@ -3633,6 +3682,9 @@ function applyAdvancedFilters() {
         opacity: 0.75,
         acc3Frames: null,
         acc24Frames: null,
+        rawTimes: null,
+        rawFrames: null,
+        lastRefreshedAt: 0,
         canvas: null,
         ctx: null,
         imgData: null,
@@ -3882,67 +3934,219 @@ function applyAdvancedFilters() {
         }
     }
 
-    // Freshness check: returns true only if forecast has >= 24h future forecast,
-    // covers the full island bounds, and updated_at is within 12 hours (ECMWF runs every 6h)
-    function isDataFresh(data) {
+    // Robust date parsing for ISO timestamps across all mobile browsers (iOS Safari & Android)
+    function parseForecastTime(raw) {
+        if (!raw) return new Date();
+        let s = String(raw).trim();
+        if (s.length === 16) s += ':00'; // Append seconds if missing (YYYY-MM-DDTHH:mm -> YYYY-MM-DDTHH:mm:ss)
+        if (!s.includes('+') && !s.endsWith('Z')) s += '+05:30'; // Explicit Colombo SLST timezone
+        const d = new Date(s);
+        if (isNaN(d.getTime())) {
+            const m = String(raw).match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+            if (m) {
+                // Asia/Colombo is UTC+5:30 = 330 minutes
+                return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - 330 * 60 * 1000);
+            }
+            return new Date();
+        }
+        return d;
+    }
+
+    // Format time in Sri Lanka Standard Time (Asia/Colombo) for all devices
+    function formatColomboTime(date) {
+        if (!date || isNaN(date.getTime())) return '—';
+        try {
+            const datePart = date.toLocaleDateString('en-GB', {
+                timeZone: 'Asia/Colombo',
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short'
+            });
+            const timePart = date.toLocaleTimeString('en-GB', {
+                timeZone: 'Asia/Colombo',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+            return `${datePart} · ${timePart}`;
+        } catch (_) {
+            const slMs = date.getTime() + (5.5 * 3600 * 1000);
+            const slDate = new Date(slMs);
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return `${days[slDate.getUTCDay()]} ${slDate.getUTCDate()} ${months[slDate.getUTCMonth()]} · ${String(slDate.getUTCHours()).padStart(2, '0')}:00`;
+        }
+    }
+
+    function formatColomboHour(date) {
+        if (!date || isNaN(date.getTime())) return '--:00';
+        try {
+            return date.toLocaleTimeString('en-GB', {
+                timeZone: 'Asia/Colombo',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+        } catch (_) {
+            const slMs = date.getTime() + (5.5 * 3600 * 1000);
+            const slDate = new Date(slMs);
+            return String(slDate.getUTCHours()).padStart(2, '0') + ':00';
+        }
+    }
+
+    function formatColomboDateShort(date) {
+        if (!date || isNaN(date.getTime())) return '—';
+        try {
+            return date.toLocaleDateString('en-GB', {
+                timeZone: 'Asia/Colombo',
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short'
+            });
+        } catch (_) {
+            const slMs = date.getTime() + (5.5 * 3600 * 1000);
+            const slDate = new Date(slMs);
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            return `${days[slDate.getUTCDay()]} ${slDate.getUTCDate()}`;
+        }
+    }
+
+    function formatColomboDay(date) {
+        if (!date || isNaN(date.getTime())) return '—';
+        try {
+            return date.toLocaleDateString('en-GB', {
+                timeZone: 'Asia/Colombo',
+                weekday: 'short'
+            });
+        } catch (_) {
+            const slMs = date.getTime() + (5.5 * 3600 * 1000);
+            const slDate = new Date(slMs);
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            return days[slDate.getUTCDay()];
+        }
+    }
+
+    // Check if forecast dataset has sufficient upcoming future hours relative to current real-world time
+    function hasValidFutureData(data) {
         if (!data || !data.times || !data.frames || data.times.length === 0) return false;
-        // Invalidate older narrow bounds (east < 82.0) so eastern province is never cut off
         if (data.bounds && data.bounds[2] < 82.0) return false;
         
         const nowMs = Date.now();
         const lastTime = data.times[data.times.length - 1];
-        const lastTimeMs = new Date(lastTime.includes('+') || lastTime.endsWith('Z') ? lastTime : lastTime + '+05:30').getTime();
-        // If the forecast ends less than 24 hours into the future, consider it stale
-        if (lastTimeMs - nowMs < 24 * 3600 * 1000) return false;
+        const lastTimeMs = parseForecastTime(lastTime).getTime();
+        // Requires at least 6 hours of future forecast ahead
+        return (lastTimeMs - nowMs >= 6 * 3600 * 1000);
+    }
 
-        // If updated_at is present and older than 12 hours, consider it stale (ECMWF runs every 6h)
-        if (data.updated_at) {
-            const updatedMs = new Date(data.updated_at).getTime();
-            if (nowMs - updatedMs > 12 * 3600 * 1000) return false;
+    // Store master raw dataset and bounds
+    function setMasterDataset(data) {
+        STATE.data = data;
+        STATE.rawTimes = [...data.times];
+        STATE.rawFrames = [...data.frames];
+        STATE.lastRefreshedAt = Date.now();
+        if (data.bounds) BOUNDS = data.bounds;
+        if (data.rows) ROWS = data.rows;
+        if (data.cols) COLS = data.cols;
+    }
+
+    // Anchor working timeline dynamically to current real-time hour (NOW = 0)
+    function syncTimelineToCurrentHour() {
+        if (!STATE.rawTimes || !STATE.rawFrames || STATE.rawTimes.length === 0) return false;
+        
+        const nowMs = Date.now();
+        let bestIdx = 0;
+        let foundFuture = false;
+
+        for (let i = 0; i < STATE.rawTimes.length; i++) {
+            const t = parseForecastTime(STATE.rawTimes[i]).getTime();
+            if (t <= nowMs) {
+                bestIdx = i;
+            } else {
+                foundFuture = true;
+                break;
+            }
         }
+
+        // If dataset is completely in the past
+        if (!foundFuture && bestIdx >= STATE.rawTimes.length - 1) {
+            return false;
+        }
+
+        // Slice working frames from current hour forward
+        STATE.data.times = STATE.rawTimes.slice(bestIdx);
+        STATE.data.frames = STATE.rawFrames.slice(bestIdx);
+
+        // Precompute forward 3h and 24h accumulations
+        calculateAccumulation();
+
+        STATE.nowIndex = 0;
+        STATE.currentHour = 0;
+
+        const slider = document.getElementById('weather-time-slider');
+        if (slider && STATE.data.times) {
+            slider.min = 0;
+            slider.max = STATE.data.times.length - 1;
+            slider.value = 0;
+        }
+
+        setupTimelineMarkers();
+        updateUI();
+        renderFrame(0);
         return true;
     }
 
-    // Load Forecast Data with Automatic Live Update & Self-Healing Cache
-    async function loadForecastData() {
-        if (STATE.loaded || STATE.loading) return;
-        STATE.loading = true;
+    // Load Forecast Data with Fast-Path Rendering and Seamless Background Sync
+    async function loadForecastData(forceRefresh = false) {
+        if (STATE.loading) return;
 
-        const tagInfo = document.getElementById('weather-tag-info');
-        if (tagInfo) tagInfo.textContent = 'Checking forecast...';
-
-        // 1. Check client-side localStorage cache (2h TTL) with versioned key to purge old cache
-        const vKey = (typeof CACHE_VERSION !== 'undefined' ? CACHE_VERSION : 'v75');
-        const CACHE_KEY = 'ecmwf_rain_cache_' + vKey;
-        const CACHE_TS_KEY = 'ecmwf_rain_ts_' + vKey;
-        try {
-            localStorage.removeItem('ecmwf_rain_cache');
-            localStorage.removeItem('ecmwf_rain_ts');
-            localStorage.removeItem('ecmwf_rain_cache_v74');
-            localStorage.removeItem('ecmwf_rain_ts_v74');
-            const cachedStr = localStorage.getItem(CACHE_KEY);
-            const cachedTs = parseInt(localStorage.getItem(CACHE_TS_KEY) || '0', 10);
-            if (cachedStr && (Date.now() - cachedTs < 2 * 3600 * 1000)) {
-                const parsed = JSON.parse(cachedStr);
-                if (isDataFresh(parsed)) {
-                    STATE.data = parsed;
-                    STATE.loaded = true;
-                    console.log('🌧️ [ECMWF] Loaded fresh data from client localStorage cache.');
-                }
+        // If data is already loaded and fresh, re-anchor current hour instantly
+        if (STATE.loaded && !forceRefresh) {
+            if (syncTimelineToCurrentHour()) {
+                return;
             }
-        } catch (e) {
-            console.warn('🌧️ [ECMWF] localStorage read error:', e);
         }
 
-        // 2. Check static JSON file if not loaded from cache
-        if (!STATE.loaded) {
+        STATE.loading = true;
+        const tagInfo = document.getElementById('weather-tag-info');
+        if (tagInfo) tagInfo.textContent = 'Connecting...';
+
+        const vKey = (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v82');
+        const CACHE_KEY = 'ecmwf_rain_cache_' + vKey;
+        const CACHE_TS_KEY = 'ecmwf_rain_ts_' + vKey;
+
+        let gotData = false;
+
+        // 1. Check client-side localStorage cache (2h TTL)
+        if (!forceRefresh) {
+            try {
+                const cachedStr = localStorage.getItem(CACHE_KEY);
+                const cachedTs = parseInt(localStorage.getItem(CACHE_TS_KEY) || '0', 10);
+                if (cachedStr && (Date.now() - cachedTs < 2 * 3600 * 1000)) {
+                    const parsed = JSON.parse(cachedStr);
+                    if (hasValidFutureData(parsed)) {
+                        setMasterDataset(parsed);
+                        gotData = true;
+                        console.log('🌧️ [ECMWF] Loaded fresh data from client localStorage cache.');
+                    }
+                }
+            } catch (e) {
+                console.warn('🌧️ [ECMWF] localStorage read error:', e);
+            }
+        }
+
+        // 2. Fast-Path: Fetch static ecmwf_rain_72h.json (<50ms load)
+        if (!gotData) {
             try {
                 const resp = await fetch('ecmwf_rain_72h.json?t=' + Date.now());
                 if (resp.ok) {
                     const json = await resp.json();
-                    if (isDataFresh(json)) {
-                        STATE.data = json;
-                        STATE.loaded = true;
+                    if (hasValidFutureData(json)) {
+                        setMasterDataset(json);
+                        gotData = true;
+                        try {
+                            localStorage.setItem(CACHE_KEY, JSON.stringify(json));
+                            localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
+                        } catch (_) {}
                         console.log('🌧️ [ECMWF] Loaded fresh data from static ecmwf_rain_72h.json.');
                     } else {
                         console.warn('🌧️ [ECMWF] Static ecmwf_rain_72h.json is older than 6h, updating from live Open-Meteo...');
@@ -3953,91 +4157,50 @@ function applyAdvancedFilters() {
             }
         }
 
-        // 3. If stale or missing, automatically fetch live ECMWF 9km from Open-Meteo API
-        if (!STATE.loaded) {
-            if (tagInfo) tagInfo.textContent = 'Fetching Live 9km ECMWF...';
+        // 3. Direct Live Open-Meteo ECMWF 9km API (Optimized parallel chunks)
+        if (!gotData) {
+            if (tagInfo) tagInfo.textContent = '⚡ Live 9km API...';
             try {
-                STATE.data = await fetchDirectFromOpenMeteo();
-                STATE.loaded = true;
-                try {
-                    localStorage.setItem(CACHE_KEY, JSON.stringify(STATE.data));
-                    localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
-                } catch (storeErr) {
-                    console.warn('🌧️ [ECMWF] Could not store to localStorage:', storeErr);
+                const liveData = await fetchDirectFromOpenMeteo();
+                if (liveData && liveData.times && liveData.times.length > 0) {
+                    setMasterDataset(liveData);
+                    gotData = true;
+                    try {
+                        localStorage.setItem(CACHE_KEY, JSON.stringify(liveData));
+                        localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
+                    } catch (_) {}
+                    console.log('🌧️ [ECMWF] Direct Open-Meteo ECMWF live fetch successful.');
                 }
-                console.log('🌧️ [ECMWF] Direct Open-Meteo ECMWF live fetch successful.');
             } catch (apiErr) {
                 console.error('🌧️ [ECMWF] Direct API fetch failed:', apiErr);
-                // Offline fallback: use whatever static data was present
-                if (!STATE.data) {
-                    try {
-                        const fallbackResp = await fetch('ecmwf_rain_72h.json?v=' + (window.CACHE_VERSION || '74'));
-                        if (fallbackResp.ok) {
-                            STATE.data = await fallbackResp.json();
-                            STATE.loaded = true;
-                        }
-                    } catch (_) {}
-                }
             }
         }
 
         STATE.loading = false;
 
-        if (STATE.data) {
-            if (STATE.data.bounds) BOUNDS = STATE.data.bounds;
-            if (STATE.data.rows) ROWS = STATE.data.rows;
-            if (STATE.data.cols) COLS = STATE.data.cols;
-            
-            // Step 1: Find current hour index (NOW)
-            const nowIdx = findNowIndex();
-
-            // Step 2: Slice all frames from nowIdx forward so index 0 = NOW!
-            // This eliminates past hours completely, keeping purely future forecast frames
-            if (nowIdx > 0 && STATE.data.times.length > nowIdx) {
-                STATE.data.times = STATE.data.times.slice(nowIdx);
-                STATE.data.frames = STATE.data.frames.slice(nowIdx);
-            }
-
-            // Step 3: Precalculate forward 3h and 24h predictions on future forecast frames
-            calculateAccumulation();
-
-            STATE.nowIndex = 0;
-            STATE.currentHour = 0;
-            const slider = document.getElementById('weather-time-slider');
-            if (slider && STATE.data.times) {
-                slider.min = 0;
-                slider.max = STATE.data.times.length - 1;
-                slider.value = 0;
-            }
-            setupTimelineMarkers();
-            updateUI();
-            renderFrame(0);
+        if (gotData) {
+            STATE.loaded = true;
+            syncTimelineToCurrentHour();
             if (tagInfo) {
                 const isLive = STATE.data.model && STATE.data.model.includes('Direct API');
                 tagInfo.textContent = isLive ? 'ECMWF 9km · Live API' : 'ECMWF IFS 0.1° · 72h+';
             }
-        }
-    }
-
-    // Identify the time index corresponding to the current hour (NOW)
-    function findNowIndex() {
-        if (!STATE.data || !STATE.data.times) return 0;
-        const nowMs = Date.now();
-        let bestIdx = 0;
-        let minDiff = Infinity;
-        for (let i = 0; i < STATE.data.times.length; i++) {
-            const raw = STATE.data.times[i];
-            const t = new Date(raw.includes('+') || raw.endsWith('Z') ? raw : raw + '+05:30').getTime();
-            const diff = Math.abs(t - nowMs);
-            if (diff < minDiff) {
-                minDiff = diff;
-                bestIdx = i;
+        } else {
+            // Offline / Error feedback
+            if (tagInfo) tagInfo.textContent = '⚠️ Offline';
+            const timeLabel = document.getElementById('weather-datetime-label');
+            if (timeLabel) timeLabel.textContent = 'Forecast reconnecting...';
+            const badgeNow = document.getElementById('weather-step-badge');
+            if (badgeNow) {
+                badgeNow.textContent = 'RETRY';
+                badgeNow.style.background = '#f59e0b';
+                badgeNow.style.cursor = 'pointer';
+                badgeNow.onclick = () => loadForecastData(true);
             }
         }
-        return bestIdx;
     }
 
-    // Client-side Open-Meteo direct fetch fallback with chunked requests to prevent HTTP 414
+    // Client-side Open-Meteo direct fetch with optimized parallel chunking
     async function fetchDirectFromOpenMeteo() {
         const lats = [];
         const lons = [];
@@ -4050,15 +4213,25 @@ function applyAdvancedFilters() {
             }
         }
 
-        const CHUNK_SIZE = 350;
-        const allPoints = [];
+        // Chunk into 175 coordinates (~2.2 KB URL, safe for all mobile networks and proxies)
+        const CHUNK_SIZE = 175;
+        const urls = [];
         for (let i = 0; i < lats.length; i += CHUNK_SIZE) {
             const chunkLats = lats.slice(i, i + CHUNK_SIZE);
             const chunkLons = lons.slice(i, i + CHUNK_SIZE);
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${chunkLats.join(',')}&longitude=${chunkLons.join(',')}&hourly=precipitation&models=ecmwf_ifs&timezone=Asia/Colombo&past_days=1&forecast_days=4`;
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${chunkLats.join(',')}&longitude=${chunkLons.join(',')}&hourly=precipitation&models=ecmwf_ifs&timezone=Asia/Colombo&forecast_days=3`;
+            urls.push(url);
+        }
+
+        // Fetch in parallel for rapid loading on mobile (sub-3 seconds)
+        const responses = await Promise.all(urls.map(async (url) => {
             const res = await fetch(url);
             if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
-            const json = await res.json();
+            return res.json();
+        }));
+
+        const allPoints = [];
+        for (const json of responses) {
             if (!Array.isArray(json) || !json[0] || !json[0].hourly || !json[0].hourly.time) {
                 throw new Error('Invalid Open-Meteo response structure');
             }
@@ -4157,15 +4330,8 @@ function applyAdvancedFilters() {
 
         if (STATE.data && STATE.data.times && STATE.data.times[STATE.currentHour]) {
             const rawTime = STATE.data.times[STATE.currentHour];
-            const d = new Date(rawTime.includes('+') || rawTime.endsWith('Z') ? rawTime : rawTime + '+05:30');
-            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const dayStr = days[d.getDay()];
-            const dateStr = d.getDate();
-            const monStr = months[d.getMonth()];
-            const hourStr = String(d.getHours()).padStart(2, '0') + ':00';
-
-            if (timeLabel) timeLabel.textContent = `${dayStr} ${dateStr} ${monStr} · ${hourStr}`;
+            const d = parseForecastTime(rawTime);
+            if (timeLabel) timeLabel.textContent = formatColomboTime(d);
             
             const nowIdx = (STATE.nowIndex !== undefined) ? STATE.nowIndex : 0;
             const offsetHours = STATE.currentHour - nowIdx;
@@ -4247,28 +4413,23 @@ function applyAdvancedFilters() {
         const d3 = document.getElementById('mark-day-3');
         const d4 = document.getElementById('mark-day-4');
 
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         // Index 0 is NOW!
         if (d1) d1.textContent = 'NOW';
 
-        function parseSafeDate(tStr) {
-            return new Date(tStr.includes('+') || tStr.endsWith('Z') ? tStr : tStr + '+05:30');
-        }
-
         const step24 = Math.min(24, STATE.data.times.length - 1);
         if (STATE.data.times[step24] && d2) {
-            const dt2 = parseSafeDate(STATE.data.times[step24]);
-            d2.textContent = `+24h (${days[dt2.getDay()]})`;
+            const dt2 = parseForecastTime(STATE.data.times[step24]);
+            d2.textContent = `+24h (${formatColomboDay(dt2)})`;
         }
         const step48 = Math.min(48, STATE.data.times.length - 1);
         if (STATE.data.times[step48] && d3) {
-            const dt3 = parseSafeDate(STATE.data.times[step48]);
-            d3.textContent = `+48h (${days[dt3.getDay()]})`;
+            const dt3 = parseForecastTime(STATE.data.times[step48]);
+            d3.textContent = `+48h (${formatColomboDay(dt3)})`;
         }
         const step72 = Math.min(72, STATE.data.times.length - 1);
         if (STATE.data.times[step72] && d4) {
-            const dt4 = parseSafeDate(STATE.data.times[step72]);
-            d4.textContent = `+72h (${days[dt4.getDay()]})`;
+            const dt4 = parseForecastTime(STATE.data.times[step72]);
+            d4.textContent = `+72h (${formatColomboDay(dt4)})`;
         }
     }
 
@@ -4356,11 +4517,11 @@ function applyAdvancedFilters() {
             if (STATE.isLooping) {
                 loopBtn.classList.add('active');
                 loopBtn.title = 'Repeat Mode: Continuous Loop (Click to Play Once)';
-                if (typeof showToast === 'function') showToast('Rainfall animation: Continuous Loop ON', 2000);
+                if (typeof showToast === 'function') showToast('Rainfall animation: Continuous Loop ON', 'info', 2000);
             } else {
                 loopBtn.classList.remove('active');
                 loopBtn.title = 'Repeat Mode: Play Once & Stop (Click to Loop)';
-                if (typeof showToast === 'function') showToast('Rainfall animation: Play Once & Stop', 2000);
+                if (typeof showToast === 'function') showToast('Rainfall animation: Play Once & Stop', 'info', 2000);
             }
         }
     }
@@ -4486,27 +4647,30 @@ function applyAdvancedFilters() {
         if (!res) return;
 
         const rawTime = res.time;
-        const d = new Date(rawTime.includes('+') || rawTime.endsWith('Z') ? rawTime : rawTime + '+05:30');
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const dayStr = days[d.getDay()];
-        const dateStr = d.getDate();
-        const monStr = months[d.getMonth()];
-        const hourStr = String(d.getHours()).padStart(2, '0') + ':00';
-        const formattedTime = `${dayStr} ${dateStr} ${monStr} · ${hourStr}`;
+        const d = parseForecastTime(rawTime);
+        const formattedTime = formatColomboTime(d);
         const offsetHours = STATE.currentHour;
         const offsetLabel = offsetHours === 0 ? 'NOW' : `+${offsetHours}h forecast`;
 
-        // Explicit forward time spans starting from the selected forecast hour
+        // Dynamic forward time spans starting from the selected forecast hour
+        const totalHours = STATE.data && STATE.data.times ? STATE.data.times.length : 72;
+        const remainingHours = Math.max(1, totalHours - STATE.currentHour);
+        const actualHours3 = Math.min(3, remainingHours);
+        const actualHours24 = Math.min(24, remainingHours);
+
         const curMs = d.getTime();
         const dEnd1h = new Date(curMs + 3600000);
-        const dEnd3h = new Date(curMs + 3 * 3600000);
-        const dEnd24h = new Date(curMs + 24 * 3600000);
+        const dEnd3h = new Date(curMs + actualHours3 * 3600000);
+        const dEnd24h = new Date(curMs + actualHours24 * 3600000);
 
-        const fmtH = (date) => String(date.getHours()).padStart(2, '0') + ':00';
-        const span1h = `${fmtH(d)} → ${fmtH(dEnd1h)}`;
-        const span3h = `${fmtH(d)} → ${fmtH(dEnd3h)}`;
-        const span24h = `${dayStr} ${fmtH(d)} → ${days[dEnd24h.getDay()]} ${fmtH(dEnd24h)}`;
+        const span1h = `${formatColomboHour(d)} → ${formatColomboHour(dEnd1h)}`;
+        const span3h = `${formatColomboHour(d)} → ${formatColomboHour(dEnd3h)}`;
+        const span24h = `${formatColomboDateShort(d)} ${formatColomboHour(d)} → ${formatColomboDateShort(dEnd24h)} ${formatColomboHour(dEnd24h)}`;
+        const label3h = actualHours3 === 3 ? '3h Predicted' : `${actualHours3}h Predicted`;
+        const sub3h = actualHours3 === 3 ? '(next 3h total)' : `(next ${actualHours3}h total)`;
+        const label24h = actualHours24 === 24 ? '24h Predicted' : `${actualHours24}h Predicted`;
+        const sub24h = actualHours24 === 24 ? '(24h total)' : `(${actualHours24}h total)`;
+        const winTitle = actualHours24 === 24 ? '24h Forecast Window:' : `${actualHours24}h Forecast Window:`;
 
         let alertBadge = '<span class="weather-popup-alert" style="display:block; text-align:center; padding:5px 8px; border-radius:6px; font-weight:600; font-size:0.72rem; background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.35);">✅ Predicted 24h: Normal / Below Warning Level (&lt;75mm)</span>';
         if (res.acc24 >= 150) {
@@ -4539,23 +4703,23 @@ function applyAdvancedFilters() {
                         <span style="font-size:0.54rem; color:#94a3b8; display:block;">(upcoming 1h)</span>
                     </div>
                     <div style="border-left:1px solid rgba(255,255,255,0.08); border-right:1px solid rgba(255,255,255,0.08);">
-                        <span style="font-size:0.63rem; color:#93c5fd; font-weight:600; display:block;">3h Predicted</span>
+                        <span style="font-size:0.63rem; color:#93c5fd; font-weight:600; display:block;">${label3h}</span>
                         <b style="font-size:1.15rem; color:#67e8f9; display:block; margin:2px 0;">${res.acc3} <span style="font-size:0.68rem; font-weight:normal;">mm</span></b>
                         <span style="font-size:0.56rem; color:#67e8f9; display:block;">${span3h}</span>
-                        <span style="font-size:0.54rem; color:#94a3b8; display:block;">(next 3h total)</span>
+                        <span style="font-size:0.54rem; color:#94a3b8; display:block;">${sub3h}</span>
                     </div>
                     <div>
-                        <span style="font-size:0.63rem; color:#93c5fd; font-weight:600; display:block;">24h Predicted</span>
+                        <span style="font-size:0.63rem; color:#93c5fd; font-weight:600; display:block;">${label24h}</span>
                         <b style="font-size:1.15rem; color:#f8fafc; display:block; margin:2px 0;">${res.acc24} <span style="font-size:0.68rem; font-weight:normal;">mm</span></b>
-                        <span style="font-size:0.56rem; color:#facc15; display:block; font-weight:600;">Next 24h</span>
-                        <span style="font-size:0.54rem; color:#94a3b8; display:block;">(24h total)</span>
+                        <span style="font-size:0.56rem; color:#facc15; display:block; font-weight:600;">Next ${actualHours24}h</span>
+                        <span style="font-size:0.54rem; color:#94a3b8; display:block;">${sub24h}</span>
                     </div>
                 </div>
 
                 <!-- Forward 24h Forecast Window Box -->
                 <div style="background:rgba(15,23,42,0.6); border:1px solid rgba(56,189,248,0.25); border-radius:6px; padding:6px 10px; margin:6px 0; font-size:0.66rem; color:#cbd5e1; line-height:1.45;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="color:#94a3b8;">🔮 <b>24h Forecast Window:</b></span>
+                        <span style="color:#94a3b8;">🔮 <b>${winTitle}</b></span>
                         <span style="color:#38bdf8; font-weight:700;">${span24h}</span>
                     </div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
@@ -4574,6 +4738,10 @@ function applyAdvancedFilters() {
         if (isUpdate && STATE.activePopup && STATE.activePopup.isOpen()) {
             STATE.activePopup.setHTML(html);
         } else {
+            if (window.activeFeaturePopup) {
+                window.activeFeaturePopup.remove();
+                window.activeFeaturePopup = null;
+            }
             if (STATE.activePopup) STATE.activePopup.remove();
             STATE.activePopup = new maplibregl.Popup({ className: 'weather-map-popup', maxWidth: '380px' })
                 .setLngLat([lng, lat])
@@ -4581,6 +4749,13 @@ function applyAdvancedFilters() {
                 .addTo(map);
         }
     }
+
+    window.closeWeatherPopup = function () {
+        if (STATE.activePopup) {
+            STATE.activePopup.remove();
+            STATE.activePopup = null;
+        }
+    };
 
     // Map Click Inspector
     function handleMapClick(e) {
@@ -4590,18 +4765,30 @@ function applyAdvancedFilters() {
         // Don't intercept clicks while measuring tool is active
         if (typeof isMeasuring !== 'undefined' && isMeasuring) return;
 
-        // Don't intercept clicks on existing inspection or station points (use a touch-friendly bbox)
+        // Don't intercept clicks on existing inspection/station points or active polygon overlays
         try {
+            const isMobile = window.innerWidth <= 768;
             const pointLayers = ['inspection_points', 'drone_surveys_points', 'satellite_points', 'arg_locations_points']
                 .filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
             if (pointLayers.length > 0) {
-                const radius = 16;
+                const radius = isMobile ? 32 : 16;
                 const bbox = [
                     [e.point.x - radius, e.point.y - radius],
                     [e.point.x + radius, e.point.y + radius]
                 ];
                 const hits = map.queryRenderedFeatures(bbox, { layers: pointLayers });
                 if (hits && hits.length > 0) return;
+            }
+
+            const polygonLayers = ['satellite_polygons_fill', 'satellite_polygons_line', 'tiz_zones_fill', 'tiz_50k_fill']
+                .filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+            if (polygonLayers.length > 0) {
+                const polyBbox = [
+                    [e.point.x - 6, e.point.y - 6],
+                    [e.point.x + 6, e.point.y + 6]
+                ];
+                const polyHits = map.queryRenderedFeatures(polyBbox, { layers: polygonLayers });
+                if (polyHits && polyHits.length > 0) return;
             }
         } catch (_) {}
 
@@ -4637,6 +4824,17 @@ function applyAdvancedFilters() {
                             cp.classList.add('collapsed');
                             try { localStorage.setItem('controlsCollapsed', 'true'); } catch (_) {}
                         }
+                    }
+
+                    // Immediate real-time status so mobile user never sees stale placeholder text
+                    const timeLabel = document.getElementById('weather-datetime-label');
+                    if (timeLabel && !STATE.loaded) {
+                        timeLabel.textContent = 'Loading forecast for ' + formatColomboTime(new Date()) + '...';
+                    }
+                    const badgeNow = document.getElementById('weather-step-badge');
+                    if (badgeNow && !STATE.loaded) {
+                        badgeNow.textContent = 'SYNC';
+                        badgeNow.style.background = '#0ea5e9';
                     }
 
                     await loadForecastData();
@@ -4692,6 +4890,20 @@ function applyAdvancedFilters() {
                 }
             });
         }
+
+        // Mobile Tab Resume / Phone Wake-up: Automatically re-anchor to real-time current hour
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && STATE.loaded && checkbox && checkbox.checked) {
+                if (!syncTimelineToCurrentHour()) {
+                    loadForecastData(true);
+                }
+            }
+        });
+        window.addEventListener('focus', () => {
+            if (STATE.loaded && checkbox && checkbox.checked) {
+                syncTimelineToCurrentHour();
+            }
+        });
 
         // Map Click
         if (typeof map !== 'undefined') {

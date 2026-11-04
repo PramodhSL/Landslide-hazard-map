@@ -2534,18 +2534,6 @@
             align-items: center;
         }
 
-        /* Weather Popup on Map Click */
-        .weather-map-popup .maplibregl-popup-content {
-            background: rgba(11, 17, 32, 0.95);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            border: 1px solid rgba(59, 130, 246, 0.4);
-            border-radius: 12px;
-            padding: 10px 14px;
-            color: #f8fafc;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-        }
-
         .weather-popup-title {
             font-size: 0.85rem;
             font-weight: 700;
@@ -2604,7 +2592,13 @@
             }
 
             .weather-tag {
-                display: none;
+                display: inline-block;
+                font-size: 0.58rem;
+                padding: 1px 5px;
+                white-space: nowrap;
+                max-width: 95px;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
 
             .weather-mode-pill {
@@ -2694,10 +2688,6 @@
         @media (max-width: 768px) {
             #inspection-zoom-hint {
                 bottom: 220px !important;
-            }
-
-            body.weather-active #inspection-zoom-hint {
-                bottom: 260px !important;
             }
 
             body.weather-active .mobile-stats-strip,
@@ -2799,4 +2789,4 @@
             background: rgba(255, 255, 255, 0.15) !important;
         }
 
-
+

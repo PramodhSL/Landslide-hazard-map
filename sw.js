@@ -1,5 +1,5 @@
 // ⚠️ DEPLOY-1: When bumping version, also update APP_VERSION in index.html (line 7) and style.css?v= in index.html
-const CACHE_NAME = 'landslide-map-v78';
+const CACHE_NAME = 'landslide-map-v82';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -46,8 +46,8 @@ self.addEventListener('fetch', (event) => {
         return;
     }
     
-    // Skip large GeoJSON files (served from Cloudflare R2 with its own CDN caching)
-    if (event.request.url.indexOf('.geojson') !== -1) {
+    // Skip large GeoJSON files and dynamic weather forecast JSON (cached in localStorage with 2h TTL)
+    if (event.request.url.indexOf('.geojson') !== -1 || event.request.url.indexOf('ecmwf_rain_72h.json') !== -1) {
         return;
     }
     
