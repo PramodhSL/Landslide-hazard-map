@@ -2720,37 +2720,17 @@
             }
         }
 
-        @media (max-width: 480px) {
-            .desktop-only-txt {
-                display: none !important;
-            }
-
-            .weather-map-popup.maplibregl-popup {
-                max-width: calc(100vw - 20px) !important;
-                width: calc(100vw - 20px) !important;
-            }
-
-            .weather-map-popup .maplibregl-popup-content {
-                padding: 10px 10px 8px 10px !important;
-                width: 100% !important;
-                box-sizing: border-box !important;
-            }
-
-            .weather-map-popup .weather-map-popup-inner {
-                width: 100% !important;
-                min-width: unset !important;
-                max-width: 100% !important;
-            }
-
-            .weather-map-popup .weather-popup-title {
-                font-size: 0.84rem !important;
-            }
-        }
-
         /* ECMWF Weather Forecast Map Popup */
         .weather-map-popup.maplibregl-popup {
             max-width: 380px !important;
             z-index: 25;
+        }
+
+        .weather-map-popup .weather-map-popup-inner {
+            min-width: 320px;
+            max-width: 365px;
+            width: 340px;
+            box-sizing: border-box;
         }
 
         .weather-map-popup .maplibregl-popup-content {
@@ -2787,6 +2767,33 @@
         .weather-map-popup .maplibregl-popup-close-button:hover {
             color: #ffffff !important;
             background: rgba(255, 255, 255, 0.15) !important;
+        }
+
+        @media (max-width: 480px) {
+            .desktop-only-txt {
+                display: none !important;
+            }
+
+            .weather-map-popup.maplibregl-popup {
+                max-width: calc(100vw - 20px) !important;
+                width: calc(100vw - 20px) !important;
+            }
+
+            .weather-map-popup .maplibregl-popup-content {
+                padding: 10px 10px 8px 10px !important;
+                width: 100% !important;
+                box-sizing: border-box !important;
+            }
+
+            .weather-map-popup .weather-map-popup-inner {
+                width: 100% !important;
+                min-width: unset !important;
+                max-width: 100% !important;
+            }
+
+            .weather-map-popup .weather-popup-title {
+                font-size: 0.84rem !important;
+            }
         }
 
 

@@ -2785,7 +2785,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v82'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v85'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2927,7 +2927,7 @@ async function loadDashboardAndSearchData() {
     try {
         // PERF-MOB-3: Use default browser cache (IDB version-stamp already handles staleness detection).
         // cache:'no-cache' was forcing a full network revalidation on every single page load.
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v82';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v85';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'default' });
         if (res.ok) {
             const freshStats = await res.json();
@@ -3684,6 +3684,8 @@ function applyAdvancedFilters() {
         acc24Frames: null,
         rawTimes: null,
         rawFrames: null,
+        fullFutureTimes: null,
+        fullFutureFrames: null,
         lastRefreshedAt: 0,
         canvas: null,
         ctx: null,
@@ -3902,19 +3904,24 @@ function applyAdvancedFilters() {
     }
 
     // Precalculate forward 3h and 24h accumulated predictions for each forecast hour
+    // Uses fullFutureFrames (up to 96-120h) so even step +72h has a complete 24-hour forward sum
     function calculateAccumulation() {
         if (!STATE.data || !STATE.data.frames) return;
-        const numHours = STATE.data.frames.length;
-        const numPts = STATE.data.frames[0].length;
+        const sourceFrames = (STATE.fullFutureFrames && STATE.fullFutureFrames.length >= STATE.data.frames.length)
+            ? STATE.fullFutureFrames
+            : STATE.data.frames;
+        const totalSourceHours = sourceFrames.length;
+        const numSliderHours = STATE.data.frames.length;
+        const numPts = sourceFrames[0].length;
         STATE.acc3Frames = [];
         STATE.acc24Frames = [];
 
-        for (let h = 0; h < numHours; h++) {
+        for (let h = 0; h < numSliderHours; h++) {
             // 3-hour forward accumulation (predicted sum of upcoming 3 hours: [h, h+1, h+2])
-            const end3H = Math.min(numHours - 1, h + 2);
+            const end3H = Math.min(totalSourceHours - 1, h + 2);
             const acc3 = new Float32Array(numPts);
             for (let ph = h; ph <= end3H; ph++) {
-                const f = STATE.data.frames[ph];
+                const f = sourceFrames[ph];
                 for (let p = 0; p < numPts; p++) acc3[p] += f[p];
             }
             const rounded3 = new Array(numPts);
@@ -3922,10 +3929,10 @@ function applyAdvancedFilters() {
             STATE.acc3Frames.push(rounded3);
 
             // 24-hour forward accumulation (predicted sum of upcoming 24 hours: [h ... h+23])
-            const end24H = Math.min(numHours - 1, h + 23);
+            const end24H = Math.min(totalSourceHours - 1, h + 23);
             const acc24 = new Float32Array(numPts);
             for (let ph = h; ph <= end24H; ph++) {
-                const f = STATE.data.frames[ph];
+                const f = sourceFrames[ph];
                 for (let p = 0; p < numPts; p++) acc24[p] += f[p];
             }
             const rounded24 = new Array(numPts);
@@ -4026,7 +4033,7 @@ function applyAdvancedFilters() {
         }
     }
 
-    // Check if forecast dataset has sufficient upcoming future hours relative to current real-world time
+    // Check if forecast dataset has at least 72h of upcoming forecast hours relative to current real-world time
     function hasValidFutureData(data) {
         if (!data || !data.times || !data.frames || data.times.length === 0) return false;
         if (data.bounds && data.bounds[2] < 82.0) return false;
@@ -4034,8 +4041,8 @@ function applyAdvancedFilters() {
         const nowMs = Date.now();
         const lastTime = data.times[data.times.length - 1];
         const lastTimeMs = parseForecastTime(lastTime).getTime();
-        // Requires at least 6 hours of future forecast ahead
-        return (lastTimeMs - nowMs >= 6 * 3600 * 1000);
+        // Requires at least 72 hours of future forecast ahead so slider is always full 72h
+        return (lastTimeMs - nowMs >= 72 * 3600 * 1000);
     }
 
     // Store master raw dataset and bounds
@@ -4049,7 +4056,7 @@ function applyAdvancedFilters() {
         if (data.cols) COLS = data.cols;
     }
 
-    // Anchor working timeline dynamically to current real-time hour (NOW = 0)
+    // Anchor working timeline dynamically to current real-time hour (NOW = 0, capped to 73 steps = +72h)
     function syncTimelineToCurrentHour() {
         if (!STATE.rawTimes || !STATE.rawFrames || STATE.rawTimes.length === 0) return false;
         
@@ -4072,11 +4079,16 @@ function applyAdvancedFilters() {
             return false;
         }
 
-        // Slice working frames from current hour forward
-        STATE.data.times = STATE.rawTimes.slice(bestIdx);
-        STATE.data.frames = STATE.rawFrames.slice(bestIdx);
+        // Retain full future array (96-120h) so 24h accumulations at +72h have all 24 upcoming hours
+        STATE.fullFutureTimes = STATE.rawTimes.slice(bestIdx);
+        STATE.fullFutureFrames = STATE.rawFrames.slice(bestIdx);
 
-        // Precompute forward 3h and 24h accumulations
+        // Slice interactive slider timeline to 73 steps (NOW = 0 through +72h)
+        const MAX_SLIDER_STEPS = 73;
+        STATE.data.times = STATE.fullFutureTimes.slice(0, MAX_SLIDER_STEPS);
+        STATE.data.frames = STATE.fullFutureFrames.slice(0, MAX_SLIDER_STEPS);
+
+        // Precompute forward 3h and 24h accumulations using fullFutureFrames
         calculateAccumulation();
 
         STATE.nowIndex = 0;
@@ -4095,12 +4107,30 @@ function applyAdvancedFilters() {
         return true;
     }
 
-    // Load Forecast Data with Fast-Path Rendering and Seamless Background Sync
+    // Fetch helper with AbortController timeout and automatic retry for mobile resilience
+    async function fetchChunkWithRetry(url, retries = 2, timeoutMs = 12000) {
+        for (let attempt = 0; attempt <= retries; attempt++) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const res = await fetch(url, { signal: controller.signal });
+                clearTimeout(timer);
+                if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
+                return await res.json();
+            } catch (err) {
+                clearTimeout(timer);
+                if (attempt === retries) throw err;
+                await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+            }
+        }
+    }
+
+    // Load Forecast Data with Client Cache & Direct Live Open-Meteo API
     async function loadForecastData(forceRefresh = false) {
         if (STATE.loading) return;
 
-        // If data is already loaded and fresh, re-anchor current hour instantly
-        if (STATE.loaded && !forceRefresh) {
+        // If data is already loaded and within 2h TTL, re-anchor current hour instantly
+        if (STATE.loaded && !forceRefresh && (Date.now() - STATE.lastRefreshedAt < 2 * 3600 * 1000)) {
             if (syncTimelineToCurrentHour()) {
                 return;
             }
@@ -4110,23 +4140,31 @@ function applyAdvancedFilters() {
         const tagInfo = document.getElementById('weather-tag-info');
         if (tagInfo) tagInfo.textContent = 'Connecting...';
 
-        const vKey = (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v82');
+        const vKey = (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v85');
         const CACHE_KEY = 'ecmwf_rain_cache_' + vKey;
         const CACHE_TS_KEY = 'ecmwf_rain_ts_' + vKey;
 
         let gotData = false;
 
-        // 1. Check client-side localStorage cache (2h TTL)
+        // 1. Check client-side localStorage cache (2h TTL, with instant preview if >2h old)
+        let hasPreview = false;
         if (!forceRefresh) {
             try {
                 const cachedStr = localStorage.getItem(CACHE_KEY);
                 const cachedTs = parseInt(localStorage.getItem(CACHE_TS_KEY) || '0', 10);
-                if (cachedStr && (Date.now() - cachedTs < 2 * 3600 * 1000)) {
+                if (cachedStr) {
                     const parsed = JSON.parse(cachedStr);
                     if (hasValidFutureData(parsed)) {
                         setMasterDataset(parsed);
-                        gotData = true;
-                        console.log('🌧️ [ECMWF] Loaded fresh data from client localStorage cache.');
+                        if (Date.now() - cachedTs < 2 * 3600 * 1000) {
+                            STATE.lastRefreshedAt = cachedTs;
+                            gotData = true;
+                            console.log('🌧️ [ECMWF] Loaded fresh data from client localStorage cache.');
+                        } else {
+                            syncTimelineToCurrentHour();
+                            hasPreview = true;
+                            console.log('🌧️ [ECMWF] Rendered cached preview; refreshing from live Open-Meteo API...');
+                        }
                     }
                 }
             } catch (e) {
@@ -4134,30 +4172,7 @@ function applyAdvancedFilters() {
             }
         }
 
-        // 2. Fast-Path: Fetch static ecmwf_rain_72h.json (<50ms load)
-        if (!gotData) {
-            try {
-                const resp = await fetch('ecmwf_rain_72h.json?t=' + Date.now());
-                if (resp.ok) {
-                    const json = await resp.json();
-                    if (hasValidFutureData(json)) {
-                        setMasterDataset(json);
-                        gotData = true;
-                        try {
-                            localStorage.setItem(CACHE_KEY, JSON.stringify(json));
-                            localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
-                        } catch (_) {}
-                        console.log('🌧️ [ECMWF] Loaded fresh data from static ecmwf_rain_72h.json.');
-                    } else {
-                        console.warn('🌧️ [ECMWF] Static ecmwf_rain_72h.json is older than 6h, updating from live Open-Meteo...');
-                    }
-                }
-            } catch (err) {
-                console.warn('🌧️ [ECMWF] Could not load static JSON, trying direct API...', err);
-            }
-        }
-
-        // 3. Direct Live Open-Meteo ECMWF 9km API (Optimized parallel chunks)
+        // 2. Direct Live Open-Meteo ECMWF 9km API (Optimized parallel chunks)
         if (!gotData) {
             if (tagInfo) tagInfo.textContent = '⚡ Live 9km API...';
             try {
@@ -4173,6 +4188,9 @@ function applyAdvancedFilters() {
                 }
             } catch (apiErr) {
                 console.error('🌧️ [ECMWF] Direct API fetch failed:', apiErr);
+                if (hasPreview) {
+                    gotData = true; // Fallback to remaining hours in cached preview if offline
+                }
             }
         }
 
@@ -4195,12 +4213,14 @@ function applyAdvancedFilters() {
                 badgeNow.textContent = 'RETRY';
                 badgeNow.style.background = '#f59e0b';
                 badgeNow.style.cursor = 'pointer';
+                badgeNow.title = 'Click to retry loading live ECMWF forecast';
                 badgeNow.onclick = () => loadForecastData(true);
             }
         }
     }
 
     // Client-side Open-Meteo direct fetch with optimized parallel chunking
+    // Requests forecast_days=5 (120h) so any hour of the day has a full 72h slider + 24h accumulation lookahead
     async function fetchDirectFromOpenMeteo() {
         const lats = [];
         const lons = [];
@@ -4219,16 +4239,12 @@ function applyAdvancedFilters() {
         for (let i = 0; i < lats.length; i += CHUNK_SIZE) {
             const chunkLats = lats.slice(i, i + CHUNK_SIZE);
             const chunkLons = lons.slice(i, i + CHUNK_SIZE);
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${chunkLats.join(',')}&longitude=${chunkLons.join(',')}&hourly=precipitation&models=ecmwf_ifs&timezone=Asia/Colombo&forecast_days=3`;
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${chunkLats.join(',')}&longitude=${chunkLons.join(',')}&hourly=precipitation&models=ecmwf_ifs&timezone=Asia/Colombo&forecast_days=5`;
             urls.push(url);
         }
 
-        // Fetch in parallel for rapid loading on mobile (sub-3 seconds)
-        const responses = await Promise.all(urls.map(async (url) => {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
-            return res.json();
-        }));
+        // Fetch in parallel with timeout + retry resilience
+        const responses = await Promise.all(urls.map(url => fetchChunkWithRetry(url, 2, 12000)));
 
         const allPoints = [];
         for (const json of responses) {
@@ -4240,10 +4256,13 @@ function applyAdvancedFilters() {
 
         const times = allPoints[0].hourly.time;
         const frames = [];
+        // Open-Meteo hourly.precipitation[h] is preceding-hour accumulation (h-1 -> h).
+        // Align each timestamp times[h] with the upcoming hour's precipitation (h -> h+1) at index h+1.
         for (let h = 0; h < times.length; h++) {
+            const nextH = Math.min(times.length - 1, h + 1);
             const frame = [];
             for (let p = 0; p < allPoints.length; p++) {
-                frame.push(Math.round((allPoints[p].hourly.precipitation[h] || 0) * 10) / 10);
+                frame.push(Math.round((allPoints[p].hourly.precipitation[nextH] || 0) * 10) / 10);
             }
             frames.push(frame);
         }
@@ -4346,12 +4365,20 @@ function applyAdvancedFilters() {
                 if (offsetHours === 0) {
                     badgeNow.textContent = 'NOW';
                     badgeNow.style.background = '#ef4444';
-                } else if (offsetHours > 0) {
-                    badgeNow.textContent = `+${offsetHours}h`;
-                    badgeNow.style.background = '#0ea5e9';
+                    badgeNow.style.cursor = 'default';
+                    badgeNow.title = 'Current real-time forecast hour';
+                    badgeNow.onclick = null;
                 } else {
-                    badgeNow.textContent = `${offsetHours}h`;
-                    badgeNow.style.background = '#64748b';
+                    badgeNow.textContent = offsetHours > 0 ? `+${offsetHours}h` : `${offsetHours}h`;
+                    badgeNow.style.background = offsetHours > 0 ? '#0ea5e9' : '#64748b';
+                    badgeNow.style.cursor = 'pointer';
+                    badgeNow.title = 'Click to jump back to NOW';
+                    badgeNow.onclick = () => {
+                        pause();
+                        STATE.currentHour = 0;
+                        updateUI();
+                        renderFrame(0);
+                    };
                 }
             }
 
@@ -4395,7 +4422,15 @@ function applyAdvancedFilters() {
                         peakVal.style.color = '#38bdf8';
                     }
                 } else {
-                    peakVal.style.color = '#38bdf8';
+                    if (maxP >= 35) {
+                        peakVal.style.color = '#f87171';
+                    } else if (maxP >= 15) {
+                        peakVal.style.color = '#fb923c';
+                    } else if (maxP >= 7.5) {
+                        peakVal.style.color = '#facc15';
+                    } else {
+                        peakVal.style.color = '#38bdf8';
+                    }
                 }
             }
 
@@ -4632,11 +4667,34 @@ function applyAdvancedFilters() {
         const acc24Val = (STATE.acc24Frames && STATE.acc24Frames[STATE.currentHour]) ? 
                         interp(STATE.acc24Frames[STATE.currentHour]) : rateVal;
 
+        // Extract 24-hour forward hourly series & peak arrival time from fullFutureFrames
+        const sourceFrames = (STATE.fullFutureFrames && STATE.fullFutureFrames.length > 0)
+            ? STATE.fullFutureFrames : STATE.data.frames;
+        const sourceTimes = (STATE.fullFutureTimes && STATE.fullFutureTimes.length > 0)
+            ? STATE.fullFutureTimes : STATE.data.times;
+
+        const hourly24 = [];
+        let peakRate24 = 0;
+        let peakTime24 = sourceTimes[STATE.currentHour];
+        const endH = Math.min(sourceFrames.length - 1, STATE.currentHour + 23);
+        for (let ph = STATE.currentHour; ph <= endH; ph++) {
+            const hrVal = Math.round(interp(sourceFrames[ph] || []) * 10) / 10;
+            const hrTime = sourceTimes[ph];
+            hourly24.push({ val: hrVal, time: hrTime });
+            if (hrVal > peakRate24) {
+                peakRate24 = hrVal;
+                peakTime24 = hrTime;
+            }
+        }
+
         return {
             rate: Math.round(rateVal * 10) / 10,
             acc3: Math.round(acc3Val * 10) / 10,
             acc24: Math.round(acc24Val * 10) / 10,
-            time: STATE.data.times[STATE.currentHour]
+            time: STATE.data.times[STATE.currentHour],
+            hourly24,
+            peakRate24,
+            peakTime24
         };
     }
 
@@ -4653,8 +4711,10 @@ function applyAdvancedFilters() {
         const offsetLabel = offsetHours === 0 ? 'NOW' : `+${offsetHours}h forecast`;
 
         // Dynamic forward time spans starting from the selected forecast hour
-        const totalHours = STATE.data && STATE.data.times ? STATE.data.times.length : 72;
-        const remainingHours = Math.max(1, totalHours - STATE.currentHour);
+        const sourceTotalHours = (STATE.fullFutureTimes && STATE.fullFutureTimes.length > 0)
+            ? STATE.fullFutureTimes.length
+            : (STATE.data && STATE.data.times ? STATE.data.times.length : 72);
+        const remainingHours = Math.max(1, sourceTotalHours - STATE.currentHour);
         const actualHours3 = Math.min(3, remainingHours);
         const actualHours24 = Math.min(24, remainingHours);
 
@@ -4672,6 +4732,24 @@ function applyAdvancedFilters() {
         const sub24h = actualHours24 === 24 ? '(24h total)' : `(${actualHours24}h total)`;
         const winTitle = actualHours24 === 24 ? '24h Forecast Window:' : `${actualHours24}h Forecast Window:`;
 
+        // Peak hour summary & mini 24h bar sparkline
+        const peakSummary = res.peakRate24 > 0
+            ? `<span style="color:#facc15; font-weight:700;">${res.peakRate24.toFixed(1)} mm/h</span> <span style="color:#cbd5e1;">at ${formatColomboTime(parseForecastTime(res.peakTime24))}</span>`
+            : `<span style="color:#94a3b8;">No rain expected (0.0 mm/h)</span>`;
+
+        const maxBarScale = Math.max(5.0, res.peakRate24);
+        const sparkBars = (res.hourly24 || []).map((item, idx) => {
+            const pct = item.val > 0 ? Math.max(12, Math.min(100, Math.round((item.val / maxBarScale) * 100))) : 5;
+            let barColor = 'rgba(148,163,184,0.22)';
+            if (item.val >= 35) barColor = '#f87171';
+            else if (item.val >= 15) barColor = '#fb923c';
+            else if (item.val >= 7.5) barColor = '#facc15';
+            else if (item.val >= 2.5) barColor = '#4ade80';
+            else if (item.val > 0) barColor = '#38bdf8';
+            const tStr = formatColomboHour(parseForecastTime(item.time));
+            return `<div title="+${idx}h (${tStr}): ${item.val} mm/h" style="flex:1; height:${pct}%; background:${barColor}; border-radius:2px 2px 0 0; min-width:3px;"></div>`;
+        }).join('');
+
         let alertBadge = '<span class="weather-popup-alert" style="display:block; text-align:center; padding:5px 8px; border-radius:6px; font-weight:600; font-size:0.72rem; background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.35);">✅ Predicted 24h: Normal / Below Warning Level (&lt;75mm)</span>';
         if (res.acc24 >= 150) {
             alertBadge = '<span class="weather-popup-alert" style="display:block; text-align:center; padding:5px 8px; border-radius:6px; font-weight:600; font-size:0.72rem; background:rgba(239,68,68,0.25); color:#f87171; border:1px solid #ef4444;">🛑 Predicted 24h: Level 3 Evacuation Alert (≥150mm)</span>';
@@ -4682,7 +4760,7 @@ function applyAdvancedFilters() {
         }
 
         const html = `
-            <div class="weather-map-popup-inner" style="min-width:320px; max-width:365px; width:340px; box-sizing:border-box;">
+            <div class="weather-map-popup-inner">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; padding-right:28px;">
                     <div class="weather-popup-title" style="font-size:0.9rem; font-weight:700; color:#38bdf8; margin:0; display:flex; align-items:center; gap:5px;">
                         <span>🌧️ ECMWF Predicted Rain</span>
@@ -4716,7 +4794,7 @@ function applyAdvancedFilters() {
                     </div>
                 </div>
 
-                <!-- Forward 24h Forecast Window Box -->
+                <!-- Forward 24h Forecast Window Box + Mini Sparkline -->
                 <div style="background:rgba(15,23,42,0.6); border:1px solid rgba(56,189,248,0.25); border-radius:6px; padding:6px 10px; margin:6px 0; font-size:0.66rem; color:#cbd5e1; line-height:1.45;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span style="color:#94a3b8;">🔮 <b>${winTitle}</b></span>
@@ -4725,6 +4803,13 @@ function applyAdvancedFilters() {
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
                         <span style="color:#94a3b8;">🌧️ <b>Total Rain Expected:</b></span>
                         <span style="color:#f8fafc; font-weight:700;">${res.acc24} mm</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+                        <span style="color:#94a3b8;">⚡ <b>Peak Hour:</b></span>
+                        <span>${peakSummary}</span>
+                    </div>
+                    <div style="display:flex; align-items:flex-end; gap:2px; height:24px; margin-top:6px; padding-top:4px; border-top:1px solid rgba(255,255,255,0.06);">
+                        ${sparkBars}
                     </div>
                 </div>
 
@@ -4901,9 +4986,26 @@ function applyAdvancedFilters() {
         });
         window.addEventListener('focus', () => {
             if (STATE.loaded && checkbox && checkbox.checked) {
-                syncTimelineToCurrentHour();
+                if (Date.now() - STATE.lastRefreshedAt >= 2 * 3600 * 1000) {
+                    loadForecastData(true);
+                } else if (!STATE.isPlaying && STATE.currentHour === 0) {
+                    syncTimelineToCurrentHour();
+                }
             }
         });
+
+        // Periodic 60-second background check for hour rollover and 2-hour live forecast refresh
+        setInterval(() => {
+            if (!checkbox || !checkbox.checked || !STATE.loaded || STATE.loading) return;
+            if (Date.now() - STATE.lastRefreshedAt >= 2 * 3600 * 1000) {
+                loadForecastData(true);
+            } else if (!STATE.isPlaying && STATE.currentHour === 0 && STATE.data && STATE.data.times && STATE.data.times[0]) {
+                const firstHourMs = parseForecastTime(STATE.data.times[0]).getTime();
+                if (Date.now() >= firstHourMs + 3600 * 1000) {
+                    syncTimelineToCurrentHour();
+                }
+            }
+        }, 60000);
 
         // Map Click
         if (typeof map !== 'undefined') {
