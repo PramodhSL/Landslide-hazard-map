@@ -1,5 +1,5 @@
 // ⚠️ DEPLOY-1: When bumping version, also update APP_VERSION in index.html (line 7) and style.css?v= in index.html
-const CACHE_NAME = 'landslide-map-v85';
+const CACHE_NAME = 'landslide-map-v88';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -8,9 +8,9 @@ const ASSETS_TO_CACHE = [
     './manifest.json',
     './icon-192.png',
     './icon-512.png',
-    './pmtiles.js'
-    // PERF-MOB-6: summary.json and maplibre-gl.js are served via CDN/network; not cached here to avoid SW mismatch
-    // maplibre-gl.js and maplibre-gl.css are served from CDN — not cached here
+    './pmtiles.js',
+    './maplibre-gl.js',
+    './maplibre-gl.css'
 ];
 
 // Install Event: Cache core assets
@@ -24,18 +24,15 @@ self.addEventListener('install', (event) => {
     );
 });
 
-// Activate Event: Clean up old caches
+// Activate Event: Clean up old caches and take control cleanly
 self.addEventListener('activate', (event) => {
-    // Take control of all open pages immediately
-    event.waitUntil(clients.claim());
     event.waitUntil(
-        caches.keys().then((keyList) => {
-            return Promise.all(keyList.map((key) => {
-                if (key !== CACHE_NAME) {
-                    return caches.delete(key);
-                }
-            }));
-        })
+        Promise.all([
+            clients.claim(),
+            caches.keys().then((keyList) => Promise.all(
+                keyList.map((key) => (key !== CACHE_NAME ? caches.delete(key) : null))
+            ))
+        ])
     );
 });
 
@@ -45,9 +42,9 @@ self.addEventListener('fetch', (event) => {
     if (event.request.url.indexOf('.pmtiles') !== -1 || event.request.url.indexOf('r2.dev') !== -1) {
         return;
     }
-    
-    // Skip large GeoJSON files and dynamic weather forecast JSON (cached in localStorage with 2h TTL)
-    if (event.request.url.indexOf('.geojson') !== -1 || event.request.url.indexOf('ecmwf_rain_72h.json') !== -1) {
+
+    // Skip large GeoJSON files and live Open-Meteo API calls (cached in IndexedDB)
+    if (event.request.url.indexOf('.geojson') !== -1 || event.request.url.indexOf('api.open-meteo.com') !== -1) {
         return;
     }
     

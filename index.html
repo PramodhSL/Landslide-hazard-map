@@ -5,17 +5,27 @@
     <script>
         // Force aggressive cache purge for returning users (safe against mobile storage restriction loops)
         // ⚠️ DEPLOY-1: When bumping version, also update CACHE_NAME in sw.js and style.css?v= in index.html
-        const APP_VERSION = "v85";
+        const APP_VERSION = "v88";
         try {
             if (localStorage.getItem('lhmpVersion') !== APP_VERSION && !window.location.search.includes('update=')) {
                 localStorage.setItem('lhmpVersion', APP_VERSION);
+                const base = window.location.href.split('#')[0];
+                const sep = base.includes('?') ? '&' : '?';
+                const reloadUrl = base + sep + 'update=' + Date.now() + (window.location.hash || '');
+                let reloaded = false;
+                const doReload = () => {
+                    if (reloaded) return;
+                    reloaded = true;
+                    window.location.replace(reloadUrl);
+                };
                 if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                        for(let r of registrations) { r.unregister(); }
-                    });
+                    setTimeout(doReload, 400);
+                    navigator.serviceWorker.getRegistrations()
+                        .then(regs => Promise.all(regs.map(r => r.unregister())))
+                        .then(doReload, doReload);
+                } else {
+                    doReload();
                 }
-                // Append timestamp to trick browser into a completely hard fetch (once only)
-                window.location.replace(window.location.href.split('?')[0] + '?update=' + new Date().getTime());
             }
         } catch (e) {
             console.warn("Storage check skipped:", e);
@@ -36,18 +46,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://pub-ee4ee353c00e4a7dbe74d0b5339e82b0.r2.dev" crossorigin>
-    <link rel="preconnect" href="https://unpkg.com" crossorigin>
-    <!-- PERF-MOB-5: Preload critical scripts & styles so browser downloads them in parallel with HTML parsing -->
-    <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" as="script" crossorigin fetchpriority="high">
-    <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" as="style" crossorigin>
-    <link rel="preload" href="pmtiles.js?v=85" as="script">
-    <link rel="preload" href="app.js?v=85" as="script" fetchpriority="high">
-    
+    <!-- PERF-MOB-5: Preload critical local scripts & styles so browser downloads them in parallel with HTML parsing -->
+    <link rel="preload" href="maplibre-gl.js?v=88" as="script" fetchpriority="high">
+    <link rel="preload" href="maplibre-gl.css?v=88" as="style">
+    <link rel="preload" href="pmtiles.js?v=88" as="script">
+    <link rel="preload" href="app.js?v=88" as="script" fetchpriority="high">
+
     <!-- Google Fonts Async Load (Non-render-blocking, zero SW mismatch) -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
-    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" crossorigin />
-    <link href="style.css?v=85" rel="stylesheet" />
+    <link href="maplibre-gl.css?v=88" rel="stylesheet" />
+    <link href="style.css?v=88" rel="stylesheet" />
 </head>
 
 <body>
@@ -75,7 +84,7 @@
             <div class="app-title-bar">
                 <span class="app-title-icon">🏔️</span>
                 <span class="app-title-text">Landslide Hazard Zonation Map</span>
-                <span class="app-title-badge">Sri Lanka • v85</span>
+                <span class="app-title-badge">Sri Lanka • v88</span>
             </div>
             <div class="search-box">
                 <div class="search-input-wrapper">
@@ -505,8 +514,12 @@
         <div style="font-weight:600; margin-bottom:4px;">Distance</div>
         <div style="font-size:1.2rem; margin-bottom:8px;"><span id="distance-value">0.00</span> <span
                 id="measure-unit" style="font-size:0.9rem; color:#94a3b8;">km</span></div>
-        <button id="clear-measure"
-            style="display:block; width:100%; padding: 6px; background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#e2e8f0; cursor:pointer; font-size:0.85rem; transition:background 0.2s;">Clear</button>
+        <div style="display:flex; gap:6px;">
+            <button id="undo-measure"
+                style="flex:1; padding: 6px; background:rgba(16,185,129,0.2); border:1px solid rgba(16,185,129,0.4); border-radius:6px; color:#6ee7b7; cursor:pointer; font-size:0.82rem; transition:background 0.2s;">Undo</button>
+            <button id="clear-measure"
+                style="flex:1; padding: 6px; background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#e2e8f0; cursor:pointer; font-size:0.82rem; transition:background 0.2s;">Clear</button>
+        </div>
     </div>
 
     <div class="legend" id="legend">
@@ -679,6 +692,9 @@
                 </div>
             </div>
 
+            <!-- High-Risk Early Warning Pill (auto-populated from HR sites vs 24h forecast) -->
+            <div id="weather-hr-warning-pill" class="weather-hr-warning" style="display:none;"></div>
+
             <!-- Color Bar Legend Row with Warning Levels -->
             <div class="weather-legend-row">
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -702,11 +718,11 @@
         </div>
     </div>
 
-    <!-- MapLibre GL from CDN for instant cache hits (fallback: local copy in sw.js) -->
+    <!-- Local MapLibre GL (bundled for instant offline/PWA readiness) -->
     <!-- PERF-MOB-5: defer allows parallel download, executes in order after DOM parse -->
-    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous" defer></script>
-    <script src="pmtiles.js?v=85" defer></script><!-- L5 FIX: version-busted for proper cache invalidation -->
-    <script src="app.js?v=85" defer></script>
+    <script src="maplibre-gl.js?v=88" defer></script>
+    <script src="pmtiles.js?v=88" defer></script><!-- L5 FIX: version-busted for proper cache invalidation -->
+    <script src="app.js?v=88" defer></script>
 </body>
 
 </html>

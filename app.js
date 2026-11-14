@@ -408,6 +408,10 @@ map.on('load', () => {
             },
             'layout': { 'visibility': 'visible' }
         }, 'z-index-6-top'); // Top shelf
+        // Re-apply any active filter that was set before inspection_points finished loading
+        if (window._activeMapFilter) {
+            map.setFilter('inspection_points', window._activeMapFilter);
+        }
         // Click & cursor handlers are managed by the unified canvas click listener
         attachLayerHover('inspection_points'); // IMP 5 FIX: attach hover immediately after layer is added
 
@@ -792,7 +796,17 @@ map.on('load', () => {
                                      polyFeatures.find(f => f.layer && f.layer.id === 'tiz_50k_fill') ||
                                      polyFeatures[0];
                 showPopupForFeature(selectedPoly, e.lngLat);
+                return;
             }
+        }
+    });
+
+    // Right-click (desktop) / long-press (mobile) Site Hazard & Rainfall Context inspector on any location
+    map.on('contextmenu', (e) => {
+        if (isMeasuring) return;
+        const { lng, lat } = e.lngLat;
+        if (lng >= 79.2 && lng <= 82.5 && lat >= 5.5 && lat <= 10.1 && typeof window.showSiteHazardContextPopup === 'function') {
+            window.showSiteHazardContextPopup(e.point, e.lngLat);
         }
     });
 
@@ -816,10 +830,21 @@ map.on('load', () => {
         });
     });
 
-    // Auto-load Drone Surveys if checked
-    const droneCheck = document.getElementById('layer-drone-surveys');
-    if (droneCheck && droneCheck.checked) {
-        window.loadDroneSurveys();
+    // Auto-load any lazy layers whose checkboxes were checked before map.on('load') fired
+    const lazyBootLoaders = [
+        ['layer-10k', () => !window.hazard10kLoaded && window.loadHazard10k && window.loadHazard10k()],
+        ['layer-contours', () => !window.contoursLoaded && window.loadContours && window.loadContours()],
+        ['layer-inspection', () => !window.inspectionLoaded && window.loadInspection && window.loadInspection()],
+        ['layer-tiz', () => !window.tizZonesLoaded && window.loadTizzones && window.loadTizzones()],
+        ['layer-tiz-50k', () => !window.tizZones50kLoaded && window.loadTizzones50k && window.loadTizzones50k()],
+        ['layer-arg-locations', () => !window.argLayersLoaded && window.loadARGLayers && window.loadARGLayers()],
+        ['layer-arg-thiessen', () => !window.argLayersLoaded && window.loadARGLayers && window.loadARGLayers()],
+        ['layer-satellite-ls', () => !window.satelliteLsLoaded && window.loadSatelliteLs && window.loadSatelliteLs()],
+        ['layer-drone-surveys', () => !window.droneSurveysLoaded && window.loadDroneSurveys && window.loadDroneSurveys()]
+    ];
+    for (const [cbId, runLoader] of lazyBootLoaders) {
+        const cbEl = document.getElementById(cbId);
+        if (cbEl && cbEl.checked) runLoader();
     }
 
     // Map loaded - hide loading indicator with smooth transition
@@ -955,8 +980,8 @@ function showPopupForFeature(feature, coordinates) {
 
                 detailsHtml += `
                     <div style="margin-bottom: 8px; display: flex; flex-direction: column; gap: 2px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
-                        <span style="color: #94a3b8; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">${cleanKey}</span>
-                        <span style="color: #fff; font-size: 0.8rem; line-height: 1.4; word-break: break-word;">${valStr}</span>
+                        <span style="color: #94a3b8; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">${escapeHtml(cleanKey)}</span>
+                        <span style="color: #fff; font-size: 0.8rem; line-height: 1.4; word-break: break-word;">${escapeHtml(valStr)}</span>
                     </div>
                 `;
             }
@@ -965,8 +990,8 @@ function showPopupForFeature(feature, coordinates) {
         content = `
             <div class="custom-popup-container" style="display: flex; flex-direction: column; max-height: min(420px, 60vh); width: 290px; box-sizing: border-box; overflow: hidden;">
                 <div style="padding: 12px 14px 8px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(15, 23, 42, 0.98); flex-shrink: 0; padding-right: 28px;">
-                    <span style="font-weight: 700; color: #fff; font-size: 0.85rem; word-break: break-all; flex: 1; min-width: 0;">📍 Ref: ${refNo}</span>
-                    <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid ${badgeColor}; color: ${badgeColor}; background: ${badgeBg}; white-space: nowrap; flex-shrink: 0;">${risk}</span>
+                    <span style="font-weight: 700; color: #fff; font-size: 0.85rem; word-break: break-all; flex: 1; min-width: 0;">📍 Ref: ${escapeHtml(refNo)}</span>
+                    <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid ${badgeColor}; color: ${badgeColor}; background: ${badgeBg}; white-space: nowrap; flex-shrink: 0;">${escapeHtml(risk)}</span>
                 </div>
                 <div class="custom-popup-scroll" style="padding: 10px 14px 14px 14px; flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain;">
                     ${detailsHtml || '<div style="color:#94a3b8; font-size:0.75rem;">No details available</div>'}
@@ -1006,15 +1031,15 @@ function showPopupForFeature(feature, coordinates) {
         content = `
             <div style="padding: 12px 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 240px; max-width: 310px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; padding-right: 20px;">
-                    <span style="font-weight: 700; color: #fff; font-size: 0.85rem;">🛰️ ${name}</span>
-                    <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid #f97316; color: #f97316; background: rgba(249, 115, 22, 0.15); white-space: nowrap;">${featType}</span>
+                    <span style="font-weight: 700; color: #fff; font-size: 0.85rem;">🛰️ ${escapeHtml(name)}</span>
+                    <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid #f97316; color: #f97316; background: rgba(249, 115, 22, 0.15); white-space: nowrap;">${escapeHtml(featType)}</span>
                 </div>
                 <div style="font-size: 0.75rem; color: #cbd5e1; line-height: 1.55; display: flex; flex-direction: column; gap: 3px;">
                     ${(dist || dsd || gnd) ? `
                     <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 5px; margin-bottom: 3px;">
-                        ${dist ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">District:</span> <b style="color:#fff;">${dist}</b></div>` : ''}
-                        ${dsd ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">DSD:</span> <b style="color:#fff;">${dsd}</b></div>` : ''}
-                        ${gnd ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">GND:</span> <b style="color:#fff;">${gnd}</b></div>` : ''}
+                        ${dist ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">District:</span> <b style="color:#fff;">${escapeHtml(dist)}</b></div>` : ''}
+                        ${dsd ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">DSD:</span> <b style="color:#fff;">${escapeHtml(dsd)}</b></div>` : ''}
+                        ${gnd ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">GND:</span> <b style="color:#fff;">${escapeHtml(gnd)}</b></div>` : ''}
                     </div>
                     ` : ''}
                     ${areaHa ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Area:</span> <b style="color:#38bdf8;">${areaHa} ha</b> ${areaSqm ? `<span style="color:#64748b; font-size:0.68rem;">(${areaSqm} m²)</span>` : ''}</div>` : ''}
@@ -1046,9 +1071,9 @@ function showPopupForFeature(feature, coordinates) {
         const badgeBg = isLidar ? 'rgba(6, 182, 212, 0.2)' : 'rgba(168, 85, 247, 0.2)';
 
         let actionBtnHtml = '';
-        if (modelLink && modelLink.startsWith('http')) {
+        if (modelLink && /^https?:\/\//i.test(modelLink.trim())) {
             actionBtnHtml = `
-                <a href="${modelLink}" target="_blank" rel="noopener noreferrer" 
+                <a href="${escapeHtml(modelLink.trim())}" target="_blank" rel="noopener noreferrer" 
                    style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; padding: 10px 14px; background: linear-gradient(135deg, #06b6d4, #2563eb); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 0.82rem; box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4); transition: transform 0.2s, box-shadow 0.2s;">
                     <span>🌐 Open 3D Model (Agisoft)</span>
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
@@ -1067,33 +1092,62 @@ function showPopupForFeature(feature, coordinates) {
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; padding-right: 20px;">
                     <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
                         <span style="font-size: 1rem;">🛸</span>
-                        <span style="font-weight: 700; color: #fff; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${siteName}</span>
+                        <span style="font-weight: 700; color: #fff; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(siteName)}</span>
                     </div>
-                    <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid ${badgeColor}; color: ${badgeColor}; background: ${badgeBg}; white-space: nowrap; flex-shrink: 0;">${surveyType}</span>
+                    <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid ${badgeColor}; color: ${badgeColor}; background: ${badgeBg}; white-space: nowrap; flex-shrink: 0;">${escapeHtml(surveyType)}</span>
                 </div>
                 <div style="font-size: 0.75rem; color: #cbd5e1; line-height: 1.5; display: flex; flex-direction: column; gap: 3px;">
                     <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 5px; margin-bottom: 3px;">
-                        <div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Location:</span> <b style="color:#fff;">${district}</b> &bull; ${dsd}${gnd ? ` &bull; ${gnd}` : ''}</div>
-                        ${village ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Village:</span> <b style="color:#fff;">${village}</b></div>` : ''}
+                        <div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Location:</span> <b style="color:#fff;">${escapeHtml(district)}</b> &bull; ${escapeHtml(dsd)}${gnd ? ` &bull; ${escapeHtml(gnd)}` : ''}</div>
+                        ${village ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Village:</span> <b style="color:#fff;">${escapeHtml(village)}</b></div>` : ''}
                     </div>
                     ${matchStatus ? `
                         <div style="margin-bottom: 4px; padding: 4px 8px; background: rgba(249, 115, 22, 0.15); border: 1px solid rgba(249, 115, 22, 0.3); border-radius: 6px; font-size: 0.7rem; color: #fdba74;">
-                            🛰️ <b>Satellite Landslide:</b> ${matchStatus}
+                            🛰️ <b>Satellite Landslide:</b> ${escapeHtml(matchStatus)}
                         </div>
                     ` : ''}
                     ${(lengthM || widthM || initH || depH) ? `
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 4px 0; background: rgba(255,255,255,0.03); padding: 6px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
-                        ${lengthM ? `<div><span style="color:#94a3b8; font-size:0.65rem; display:block;">Length</span><b style="color:#fff;">${lengthM}</b></div>` : ''}
-                        ${widthM ? `<div><span style="color:#94a3b8; font-size:0.65rem; display:block;">Width</span><b style="color:#fff;">${widthM}</b></div>` : ''}
-                        ${initH ? `<div><span style="color:#94a3b8; font-size:0.65rem; display:block;">Initiation Ht</span><b style="color:#fff;">${initH}</b></div>` : ''}
-                        ${depH ? `<div><span style="color:#94a3b8; font-size:0.65rem; display:block;">Deposition Ht</span><b style="color:#fff;">${depH}</b></div>` : ''}
+                        ${lengthM ? `<div><span style="color:#94a3b8; font-size:0.65rem; display:block;">Length</span><b style="color:#fff;">${escapeHtml(lengthM)}</b></div>` : ''}
+                        ${widthM ? `<div><span style="color:#94a3b8; font-size:0.65rem; display:block;">Width</span><b style="color:#fff;">${escapeHtml(widthM)}</b></div>` : ''}
+                        ${initH ? `<div><span style="color:#94a3b8; font-size:0.65rem; display:block;">Initiation Ht</span><b style="color:#fff;">${escapeHtml(initH)}</b></div>` : ''}
+                        ${depH ? `<div><span style="color:#94a3b8; font-size:0.65rem; display:block;">Deposition Ht</span><b style="color:#fff;">${escapeHtml(depH)}</b></div>` : ''}
                     </div>
                     ` : ''}
                     <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 2px;">
-                        <span>📅 Survey Date: ${surveyDate}</span>
-                        ${officer ? `<br><span>👷 Officer: ${officer}</span>` : ''}
+                        <span>📅 Survey Date: ${escapeHtml(surveyDate)}</span>
+                        ${officer ? `<br><span>👷 Officer: ${escapeHtml(officer)}</span>` : ''}
                     </div>
                     ${actionBtnHtml}
+                </div>
+            </div>
+        `;
+    } else if (layerId === 'arg_locations_points') {
+        const stationName = getPropVal(props, ['Location', 'Station', 'Name', 'ARG_Name', 'Site']) || 'ARG Weather Station';
+        const district = getPropVal(props, ['District', 'district']);
+        const dsd = getPropVal(props, ['DSD', 'dsd']);
+        const stationId = getPropVal(props, ['Station_ID', 'ID', 'Code', 'Ref']);
+        const extraRows = Object.entries(props)
+            .filter(([k, v]) => {
+                const lk = k.toLowerCase();
+                return !['objectid', 'fid', 'geometry', 'location', 'station', 'name', 'district', 'dsd', 'latitude', 'longitude', 'lat', 'lon', 'x', 'y'].includes(lk)
+                    && v !== null && v !== undefined && String(v).trim() !== '' && String(v).trim().toLowerCase() !== 'n/a';
+            })
+            .slice(0, 6)
+            .map(([k, v]) => `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">${escapeHtml(k)}:</span> <b style="color:#fff;">${escapeHtml(v)}</b></div>`)
+            .join('');
+        content = `
+            <div style="padding: 12px 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 220px; max-width: 300px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; padding-right: 20px;">
+                    <span style="font-weight: 700; color: #fff; font-size: 0.85rem;">🌦️ ${escapeHtml(stationName)}</span>
+                    <span style="padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; border: 1px solid #38bdf8; color: #38bdf8; background: rgba(56, 189, 248, 0.15); white-space: nowrap;">ARG Gauge</span>
+                </div>
+                <div style="font-size: 0.75rem; color: #cbd5e1; line-height: 1.55; display: flex; flex-direction: column; gap: 3px;">
+                    ${stationId ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">Station Code:</span> <b style="color:#fff;">${escapeHtml(stationId)}</b></div>` : ''}
+                    ${district ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">District:</span> <b style="color:#fff;">${escapeHtml(district)}</b></div>` : ''}
+                    ${dsd ? `<div><span style="color:#94a3b8; font-size:0.7rem; font-weight:600;">DSD:</span> <b style="color:#fff;">${escapeHtml(dsd)}</b></div>` : ''}
+                    ${extraRows}
+                    <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06); color:#64748b; font-size:0.68rem;">Automatic Rain Gauge Station (NBRO)</div>
                 </div>
             </div>
         `;
@@ -1150,12 +1204,12 @@ function safeAddEventListener(id, event, callback) {
 safeAddEventListener('layer-10k', 'change', (e) => {
     // Load 1:10k on demand if user toggles it
     if (e.target.checked) {
-        if (!window.hazard10kLoaded) window.loadHazard10k();
+        if (!window.hazard10kLoaded && typeof window.loadHazard10k === 'function') window.loadHazard10k();
         if (map.getZoom() < 12) {
             showToast('ℹ️ <b>Zoom 12+ Required for 1:10,000 Detail</b><br><br>Please zoom in closer on the map to view the 1:10,000 hazard map layer.', 'info');
         }
     }
-    if (window.hazard10kLoaded) {
+    if (map.getLayer('hazard_10k_fill')) {
         map.setLayoutProperty('hazard_10k_fill', 'visibility', e.target.checked ? 'visible' : 'none');
     }
 
@@ -1171,7 +1225,9 @@ safeAddEventListener('opacity-10k', 'input', (e) => {
 });
 
 safeAddEventListener('layer-50k', 'change', (e) => {
-    map.setLayoutProperty('hazard_50k_fill', 'visibility', e.target.checked ? 'visible' : 'none');
+    if (map.getLayer('hazard_50k_fill')) {
+        map.setLayoutProperty('hazard_50k_fill', 'visibility', e.target.checked ? 'visible' : 'none');
+    }
     updateMaxZoom();
 });
 
@@ -1190,7 +1246,7 @@ function updateMaxZoom() {
 // Update configuration toggles to use lazy loaders
 
 safeAddEventListener('layer-contours', 'change', (e) => {
-    if (e.target.checked && !window.contoursLoaded) window.loadContours();
+    if (e.target.checked && !window.contoursLoaded && typeof window.loadContours === 'function') window.loadContours();
     if (map.getLayer('contours_line')) map.setLayoutProperty('contours_line', 'visibility', e.target.checked ? 'visible' : 'none');
 });
 
@@ -1199,7 +1255,7 @@ safeAddEventListener('layer-contours', 'change', (e) => {
 let userClosedQueryPanel = false;
 
 safeAddEventListener('layer-inspection', 'change', (e) => {
-    if (e.target.checked && !window.inspectionLoaded) window.loadInspection();
+    if (e.target.checked && !window.inspectionLoaded && typeof window.loadInspection === 'function') window.loadInspection();
     const visibility = e.target.checked ? 'visible' : 'none';
     if (map.getLayer('inspection_points')) map.setLayoutProperty('inspection_points', 'visibility', visibility);
 
@@ -1267,7 +1323,7 @@ if (tizToggleBtn) {
                 msg += '<br><br>🔍 <i>Note: TIZ 1:10,000 appears when zoomed in closer (Zoom level 12+).</i>';
             }
             showToast(msg, 'warning');
-            if (!window.tizZonesLoaded) window.loadTizzones();
+            if (!window.tizZonesLoaded && typeof window.loadTizzones === 'function') window.loadTizzones();
         }
         if (map.getLayer('tiz_zones_fill')) {
             map.setLayoutProperty('tiz_zones_fill', 'visibility', e.target.checked ? 'visible' : 'none');
@@ -1280,7 +1336,7 @@ if (tiz50kToggleBtn) {
     tiz50kToggleBtn.addEventListener('change', (e) => {
         if (e.target.checked) {
             showToast('⚠️ <b>INTERNAL USE ONLY</b><br><br>The Total Impact Zone (TIZ) layer is a preliminary, model-derived product and has not been field verified. This dataset is restricted to internal institutional use only and is provided solely as a decision-support tool. It should not be used independently or considered as a final or authoritative assessment.', 'warning');
-            if (!window.tizZones50kLoaded) window.loadTizzones50k();
+            if (!window.tizZones50kLoaded && typeof window.loadTizzones50k === 'function') window.loadTizzones50k();
         }
         if (map.getLayer('tiz_50k_fill')) {
             map.setLayoutProperty('tiz_50k_fill', 'visibility', e.target.checked ? 'visible' : 'none');
@@ -1290,7 +1346,7 @@ if (tiz50kToggleBtn) {
 
 safeAddEventListener('layer-arg-locations', 'change', (e) => {
     if (e.target.checked && !window.argLayersLoaded) {
-        window.loadARGLayers();
+        if (typeof window.loadARGLayers === 'function') window.loadARGLayers();
     } else if (map.getLayer('arg_locations_points')) {
         map.setLayoutProperty('arg_locations_points', 'visibility', e.target.checked ? 'visible' : 'none');
     }
@@ -1299,7 +1355,7 @@ safeAddEventListener('layer-arg-locations', 'change', (e) => {
 
 safeAddEventListener('layer-arg-thiessen', 'change', (e) => {
     if (e.target.checked && !window.argLayersLoaded) {
-        window.loadARGLayers();
+        if (typeof window.loadARGLayers === 'function') window.loadARGLayers();
     } else if (map.getLayer('arg_thiessen_fill')) {
         map.setLayoutProperty('arg_thiessen_fill', 'visibility', e.target.checked ? 'visible' : 'none');
     }
@@ -1307,7 +1363,7 @@ safeAddEventListener('layer-arg-thiessen', 'change', (e) => {
 });
 
 safeAddEventListener('layer-satellite-ls', 'change', (e) => {
-    if (e.target.checked && !window.satelliteLsLoaded) window.loadSatelliteLs();
+    if (e.target.checked && !window.satelliteLsLoaded && typeof window.loadSatelliteLs === 'function') window.loadSatelliteLs();
     const visibility = e.target.checked ? 'visible' : 'none';
     if (map.getLayer('satellite_polygons_fill')) map.setLayoutProperty('satellite_polygons_fill', 'visibility', visibility);
     if (map.getLayer('satellite_polygons_line')) map.setLayoutProperty('satellite_polygons_line', 'visibility', visibility);
@@ -1315,7 +1371,7 @@ safeAddEventListener('layer-satellite-ls', 'change', (e) => {
 });
 
 function setDroneSurveysVisibility(visible) {
-    if (visible && !window.droneSurveysLoaded) window.loadDroneSurveys();
+    if (visible && !window.droneSurveysLoaded && typeof window.loadDroneSurveys === 'function') window.loadDroneSurveys();
     const visibility = visible ? 'visible' : 'none';
     if (map.getLayer('drone_surveys_glow')) map.setLayoutProperty('drone_surveys_glow', 'visibility', visibility);
     if (map.getLayer('drone_surveys_points')) map.setLayoutProperty('drone_surveys_points', 'visibility', visibility);
@@ -1511,6 +1567,10 @@ if (locateBtnGlobal) {
         if (window.gpsMarker) { window.gpsMarker.remove(); }
 
         window.stopLocationWatch = function () {
+            if (window._gpsSafetyTimer) {
+                clearTimeout(window._gpsSafetyTimer);
+                window._gpsSafetyTimer = null;
+            }
             if (window.watchId !== null) {
                 navigator.geolocation.clearWatch(window.watchId);
                 window.watchId = null;
@@ -1525,29 +1585,24 @@ if (locateBtnGlobal) {
                 const lat = position.coords.latitude;
                 const lng = position.coords.longitude;
                 const accuracy = position.coords.accuracy;
+                const rainInfo = (typeof window.queryRainForecastAt === 'function') ? window.queryRainForecastAt(lng, lat) : null;
+                const rainLine = rainInfo ? `<br><b>ECMWF 24h Rain:</b> ${rainInfo.acc24} mm` : '';
+                const gpsPopupHtml = `<div class="popup-title">📍 Your Location</div>
+    <div class="popup-info">
+        <b>Latitude:</b> ${lat.toFixed(6)}<br>
+        <b>Longitude:</b> ${lng.toFixed(6)}<br>
+        <b>Accuracy:</b> ±${Math.round(accuracy)}m${rainLine}
+        <button type="button" onclick="window.stopLocationWatch && window.stopLocationWatch()" style="margin-top:8px;width:100%;padding:5px 8px;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.45);border-radius:6px;color:#fca5a5;cursor:pointer;font-size:0.75rem;font-weight:600;">🛑 Stop GPS Tracking</button>
+    </div>`;
 
                 // Create/Update marker
                 if (window.gpsMarker) {
                     window.gpsMarker.setLngLat([lng, lat]);
-                    window.gpsMarker.getPopup().setHTML(
-                        `<div class="popup-title">📍 Your Location</div>
-    <div class="popup-info">
-        <b>Latitude:</b> ${lat.toFixed(6)}<br>
-        <b>Longitude:</b> ${lng.toFixed(6)}<br>
-        <b>Accuracy:</b> ±${Math.round(accuracy)}m
-    </div>`
-                    );
+                    window.gpsMarker.getPopup().setHTML(gpsPopupHtml);
                 } else {
                     window.gpsMarker = new maplibregl.Marker({ color: '#8b5cf6' })
                         .setLngLat([lng, lat])
-                        .setPopup(new maplibregl.Popup().setHTML(
-                            `<div class="popup-title">📍 Your Location</div>
-    <div class="popup-info">
-        <b>Latitude:</b> ${lat.toFixed(6)}<br>
-        <b>Longitude:</b> ${lng.toFixed(6)}<br>
-        <b>Accuracy:</b> ±${Math.round(accuracy)}m
-    </div>`
-                        ))
+                        .setPopup(new maplibregl.Popup().setHTML(gpsPopupHtml))
                         .addTo(map);
 
                     // Ensure GPS marker doesn't block underlying incident point clicks
@@ -1595,8 +1650,9 @@ if (locateBtnGlobal) {
             { enableHighAccuracy: true, timeout: TIMEOUT_MS, maximumAge: 0 }
         );
 
-        // Safety timeout just in case
-        setTimeout(() => {
+        // Safety timeout just in case (stored so stopLocationWatch clears it cleanly)
+        if (window._gpsSafetyTimer) clearTimeout(window._gpsSafetyTimer);
+        window._gpsSafetyTimer = setTimeout(() => {
             if (window.watchId !== null) window.stopLocationWatch();
         }, TIMEOUT_MS + 1000);
 
@@ -1639,16 +1695,54 @@ searchInput.addEventListener('input', (e) => {
     }, 300);
 });
 
-// Allow immediate search or selecting first result when pressing Enter
+// Keyboard selection state for search dropdown
+let _searchHighlightIdx = -1;
+
+function updateSearchHighlight(items) {
+    items.forEach((el, idx) => {
+        if (idx === _searchHighlightIdx) {
+            el.classList.add('active-result');
+            el.style.outline = '1px solid rgba(139, 92, 246, 0.8)';
+            el.style.background = 'rgba(139, 92, 246, 0.18)';
+            el.scrollIntoView({ block: 'nearest' });
+        } else {
+            el.classList.remove('active-result');
+            el.style.outline = '';
+            el.style.background = '';
+        }
+    });
+}
+
+// Allow immediate search, Arrow key navigation, Escape dismiss, and Enter selection
 searchInput.addEventListener('keydown', (e) => {
+    const isVisible = searchResults.style.display !== 'none';
+    const items = isVisible ? Array.from(searchResults.querySelectorAll('.search-result-item')) : [];
+
+    if (e.key === 'ArrowDown' && items.length > 0) {
+        e.preventDefault();
+        _searchHighlightIdx = (_searchHighlightIdx + 1) % items.length;
+        updateSearchHighlight(items);
+        return;
+    }
+    if (e.key === 'ArrowUp' && items.length > 0) {
+        e.preventDefault();
+        _searchHighlightIdx = (_searchHighlightIdx <= 0 ? items.length - 1 : _searchHighlightIdx - 1);
+        updateSearchHighlight(items);
+        return;
+    }
+    if (e.key === 'Escape') {
+        searchResults.style.display = 'none';
+        _searchHighlightIdx = -1;
+        return;
+    }
     if (e.key === 'Enter') {
         e.preventDefault();
         clearTimeout(searchTimeout);
-        
-        // If there's a result currently displayed, Enter should select the first one
-        const firstResult = searchResults.querySelector('.search-result-item');
-        if (firstResult && searchResults.style.display !== 'none') {
-            firstResult.click();
+
+        const chosen = (_searchHighlightIdx >= 0 && items[_searchHighlightIdx]) ? items[_searchHighlightIdx] : items[0];
+        if (chosen && isVisible) {
+            chosen.click();
+            _searchHighlightIdx = -1;
             return;
         }
 
@@ -1669,7 +1763,13 @@ clearBtn.addEventListener('click', () => {
     }
 });
 
+let _nominatimAbort = null;
+
 async function searchLocation(query) {
+    if (_nominatimAbort) {
+        _nominatimAbort.abort();
+        _nominatimAbort = null;
+    }
     // Visual feedback
     searchResults.style.display = 'block';
     searchResults.innerHTML = '<div class="no-results" style="color:#8b5cf6;">Searching...</div>';
@@ -1715,17 +1815,11 @@ async function searchLocation(query) {
     if (localSearchIndex && localSearchIndex.length > 0) {
         for (let i = 0; i < localSearchIndex.length; i++) {
             const item = localSearchIndex[i];
-            const nRaw = item.n || '';
-            const gRaw = item.g || '';
-            const dRaw = item.d || '';
-            const disRaw = item.dis || '';
-
-            const nLower = nRaw.toLowerCase();
-            const gLower = gRaw.toLowerCase();
-            const dLower = dRaw.toLowerCase();
-            const disLower = disRaw.toLowerCase();
-
-            const mCanon = nRaw.toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/nbri/g, 'nbro').replace(/[^a-z0-9]/g, '');
+            const nLower = item._nLower !== undefined ? item._nLower : (item.n || '').toLowerCase();
+            const gLower = item._gLower !== undefined ? item._gLower : (item.g || '').toLowerCase();
+            const dLower = item._dLower !== undefined ? item._dLower : (item.d || '').toLowerCase();
+            const disLower = item._disLower !== undefined ? item._disLower : (item.dis || '').toLowerCase();
+            const mCanon = item._nCanon !== undefined ? item._nCanon : nLower.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/nbri/g, 'nbro').replace(/[^a-z0-9]/g, '');
 
             let score = 0;
 
@@ -1748,7 +1842,7 @@ async function searchLocation(query) {
 
             // C. Multi-token match across all fields (e.g. "Kegalle YTP-80" or "Ududumbara SUJ")
             if (qTokens.length > 1) {
-                const combined = `${nLower} ${gLower} ${dLower} ${disLower}`;
+                const combined = item._qRaw || `${nLower} ${gLower} ${dLower} ${disLower}`;
                 if (qTokens.every(tok => combined.includes(tok))) {
                     score += 300;
                 }
@@ -1782,9 +1876,10 @@ async function searchLocation(query) {
         // If query is long (>= 10 characters) and local matches are few, search Nominatim to enrich
         if (query.length >= 10 && formattedLocal.length < 5) {
             try {
+                _nominatimAbort = new AbortController();
                 const response = await fetch(
                     `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Sri Lanka')}&limit=3&countrycodes=lk`,
-                    { headers: { 'Accept-Language': 'en' } }
+                    { headers: { 'Accept-Language': 'en' }, signal: _nominatimAbort.signal }
                 );
                 if (response.ok) {
                     const webData = await response.json();
@@ -1807,7 +1902,7 @@ async function searchLocation(query) {
                     }
                 }
             } catch (err) {
-                console.warn("Nominatim fallback skipped:", err);
+                if (err.name !== 'AbortError') console.warn("Nominatim fallback skipped:", err);
             }
         }
         return;
@@ -1825,9 +1920,10 @@ async function searchLocation(query) {
                 return;
             }
 
+            _nominatimAbort = new AbortController();
             const response = await fetch(
                 `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Sri Lanka')}&limit=5&countrycodes=lk`,
-                { headers: { 'Accept-Language': 'en' } }
+                { headers: { 'Accept-Language': 'en' }, signal: _nominatimAbort.signal }
             );
 
             if (!response.ok) throw new Error("Network response was not ok");
@@ -1841,6 +1937,7 @@ async function searchLocation(query) {
                 showNoResults();
             }
         } catch (error) {
+            if (error.name === 'AbortError') return;
             console.error('Search error:', error);
             searchResults.innerHTML = `<div class="no-results" style="color:#ef4444;">No results found. Check network connection.</div>`;
         }
@@ -1850,6 +1947,7 @@ async function searchLocation(query) {
 }
 
 function displayResults(results) {
+    _searchHighlightIdx = -1;
     searchResults.innerHTML = '';
     searchResults.style.display = 'block';
 
@@ -1860,7 +1958,7 @@ function displayResults(results) {
         const title = document.createElement('div');
         title.className = 'result-title';
         if (result.isLocal) {
-            title.innerHTML = `<span style="background: rgba(139, 92, 246, 0.2); color: #a78bfa; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; margin-right: 6px; font-weight: 600;">Local Site</span>${result.display_name.split(' - ')[0]}`;
+            title.innerHTML = `<span style="background: rgba(139, 92, 246, 0.2); color: #a78bfa; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; margin-right: 6px; font-weight: 600;">Local Site</span>${escapeHtml(result.display_name.split(' - ')[0])}`;
         } else {
             title.textContent = result.display_name.split(',')[0];
         }
@@ -1901,10 +1999,10 @@ function displayResults(results) {
                 .setPopup(
                     new maplibregl.Popup().setHTML(
                         result.isLocal 
-                            ? `<div class="popup-title">${result.display_name.split(' - ')[0]}</div>
-                               <div class="popup-info"><b>Location:</b> ${result.display_name.split(' - ').slice(1).join(' - ')}<br><b>Risk level:</b> ${result.risk || 'N/A'}</div>`
-                            : `<div class="popup-title">${result.display_name.split(',')[0]}</div>
-                               <div class="popup-info">${subtitle.textContent}</div>`
+                            ? `<div class="popup-title">${escapeHtml(result.display_name.split(' - ')[0])}</div>
+                               <div class="popup-info"><b>Location:</b> ${escapeHtml(result.display_name.split(' - ').slice(1).join(' - '))}<br><b>Risk level:</b> ${escapeHtml(result.risk || 'N/A')}</div>`
+                            : `<div class="popup-title">${escapeHtml(result.display_name.split(',')[0])}</div>
+                               <div class="popup-info">${escapeHtml(subtitle.textContent)}</div>`
                     )
                 )
                 .addTo(map);
@@ -2096,13 +2194,10 @@ window.addEventListener('beforeinstallprompt', (e) => {
 });
 
 installBtn.addEventListener('click', (e) => {
-    // Hide our user interface that shows our A2HS button
     installBtn.style.display = 'none';
-    // Show the prompt
+    if (!deferredPrompt) return;
     deferredPrompt.prompt();
-    // Wait for the user to respond to the prompt
-    deferredPrompt.userChoice.then((choiceResult) => {
-        // No-op — outcome is logged only for debugging; remove console.log in production
+    deferredPrompt.userChoice.then(() => {
         deferredPrompt = null;
     });
 });
@@ -2118,6 +2213,21 @@ document.querySelectorAll('.layer-header').forEach(header => {
     });
 });
 
+// Helper to update tool-menu-item buttons without overwriting .tool-icon / .tool-label markup
+function setToolMenuBtnState(btn, isActive, iconHtml, labelText, activeIconBg) {
+    if (!btn) return;
+    btn.classList.toggle('active', !!isActive);
+    const iconEl = btn.querySelector('.tool-icon');
+    const labelEl = btn.querySelector('.tool-label');
+    if (iconEl) {
+        if (iconHtml) iconEl.innerHTML = iconHtml;
+        if (activeIconBg !== undefined) iconEl.style.background = activeIconBg;
+    } else if (iconHtml) {
+        btn.innerHTML = iconHtml + `<span class="tool-label">${escapeHtml(labelText || '')}</span>`;
+    }
+    if (labelEl && labelText) labelEl.textContent = labelText;
+}
+
 // 3D View Toggle
 let is3DMode = false;
 const view3dBtn = document.getElementById('view3d-btn');
@@ -2126,38 +2236,29 @@ view3dBtn.addEventListener('click', () => {
     is3DMode = !is3DMode;
 
     if (is3DMode) {
-        // Zoom out first if too zoomed in (prevents WebGL crash)
         const safeZoom = Math.min(map.getZoom(), 14);
-
-        // Switch to 3D view with hillshade
         map.easeTo({
             pitch: 60,
             bearing: map.getBearing() || 0,
             zoom: safeZoom,
             duration: 1000
         });
-        view3dBtn.style.background = 'linear-gradient(135deg, #10b981, #06b6d4)';
-        view3dBtn.innerHTML = ICONS.view2d + '<span class="fab-tooltip">2D View</span>';
-
-        // Auto-enable hillshade for better 3D effect
+        setToolMenuBtnState(view3dBtn, true, ICONS.view2d, '2D Flat View', 'linear-gradient(135deg, #10b981, #06b6d4)');
         ensureLayersLoaded(['hillshade'], () => {
-            map.setLayoutProperty('hillshade', 'visibility', 'visible');
+            if (map.getLayer('hillshade')) map.setLayoutProperty('hillshade', 'visibility', 'visible');
         });
     } else {
-        // Switch to 2D view
         map.easeTo({
             pitch: 0,
             bearing: 0,
             duration: 1000
         });
-        view3dBtn.style.background = 'linear-gradient(135deg, #f59e0b, #ef4444)';
-        view3dBtn.innerHTML = ICONS.view3d + '<span class="fab-tooltip">3D Terrain View</span>';
-
-        // Disable hillshade
-        if (hillshadeLoaded) {
+        setToolMenuBtnState(view3dBtn, false, ICONS.view3d, '3D Terrain View', 'linear-gradient(135deg, #f59e0b, #ef4444)');
+        if (hillshadeLoaded && map.getLayer('hillshade')) {
             map.setLayoutProperty('hillshade', 'visibility', 'none');
         }
     }
+    if (toolsPanel) toolsPanel.classList.remove('active');
 });
 
 // Measurement Tool Logic
@@ -2168,6 +2269,7 @@ const measureBtn = document.getElementById('measure-btn');
 const measureResult = document.getElementById('measure-result');
 const distanceValue = document.getElementById('distance-value');
 const clearMeasureBtn = document.getElementById('clear-measure');
+const undoMeasureBtn = document.getElementById('undo-measure');
 
 // Haversine formula for distance (km)
 function getDistance(coord1, coord2) {
@@ -2186,26 +2288,62 @@ function deg2rad(deg) {
     return deg * (Math.PI / 180);
 }
 
+function updateMeasurementDisplay() {
+    const coordinates = measurePoints.map(p => [p.lng, p.lat]);
+    if (map.getSource('measure-line')) {
+        map.getSource('measure-line').setData({
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates }
+        });
+    }
+    const unitEl = document.getElementById('measure-unit');
+    if (measurePoints.length > 1) {
+        let totalDist = 0;
+        for (let i = 0; i < measurePoints.length - 1; i++) {
+            totalDist += getDistance(measurePoints[i], measurePoints[i + 1]);
+        }
+        if (totalDist < 1) {
+            distanceValue.textContent = (totalDist * 1000).toFixed(0);
+            if (unitEl) unitEl.textContent = 'm';
+        } else {
+            distanceValue.textContent = totalDist.toFixed(2);
+            if (unitEl) unitEl.textContent = 'km';
+        }
+    } else {
+        distanceValue.textContent = '0.00';
+        if (unitEl) unitEl.textContent = 'km';
+    }
+}
+
 measureBtn.addEventListener('click', () => {
     isMeasuring = !isMeasuring;
     if (isMeasuring) {
-        // measureBtn.textContent = '🛑 Stop Measuring'; // Removed text change, adding active class instead
-        measureBtn.classList.add('active');
-        measureBtn.innerHTML = ICONS.measureStop + '<span class="fab-tooltip">Stop Measuring</span>';
-        measureBtn.style.background = 'linear-gradient(135deg, #ef4444, #f59e0b)';
+        setToolMenuBtnState(measureBtn, true, ICONS.measureStop, 'Stop Measuring', 'linear-gradient(135deg, #ef4444, #f59e0b)');
         map.getCanvas().style.cursor = 'crosshair';
+        if (map.doubleClickZoom) map.doubleClickZoom.disable();
         measureResult.style.display = 'block';
     } else {
         stopMeasuring();
     }
+    if (toolsPanel) toolsPanel.classList.remove('active');
 });
 
 function stopMeasuring() {
     isMeasuring = false;
-    measureBtn.classList.remove('active');
-    measureBtn.innerHTML = ICONS.measure + '<span class="fab-tooltip">Measure Distance</span>';
-    measureBtn.style.background = 'linear-gradient(135deg, #10b981, #0ea5e9)';
+    setToolMenuBtnState(measureBtn, false, ICONS.measure, 'Measure Distance', 'linear-gradient(135deg, #06b6d4, #0891b2)');
     map.getCanvas().style.cursor = '';
+    if (map.doubleClickZoom) map.doubleClickZoom.enable();
+}
+
+if (undoMeasureBtn) {
+    undoMeasureBtn.addEventListener('click', () => {
+        if (measurePoints.length === 0) return;
+        measurePoints.pop();
+        const lastMarker = measureMarkers.pop();
+        if (lastMarker) lastMarker.remove();
+        updateMeasurementDisplay();
+    });
 }
 
 clearMeasureBtn.addEventListener('click', clearMeasurement);
@@ -2214,23 +2352,8 @@ function clearMeasurement() {
     measurePoints = [];
     measureMarkers.forEach(marker => marker.remove());
     measureMarkers = [];
-    distanceValue.textContent = '0.00';
-    // Reset unit label back to km
-    const unitEl = document.getElementById('measure-unit');
-    if (unitEl) unitEl.textContent = 'km';
-    // Hide the distance result box
     measureResult.style.display = 'none';
-    if (map.getSource('measure-line')) {
-        map.getSource('measure-line').setData({
-            type: 'Feature',
-            properties: {},
-            geometry: {
-                type: 'LineString',
-                coordinates: []
-            }
-        });
-    }
-    // Also stop measuring mode
+    updateMeasurementDisplay();
     stopMeasuring();
 }
 
@@ -2246,19 +2369,15 @@ map.on('click', (e) => {
         .addTo(map);
     measureMarkers.push(marker);
 
-    // Update line
+    // Ensure source/layer exist before updating line
     const coordinates = measurePoints.map(p => [p.lng, p.lat]);
-
     if (!map.getSource('measure-line')) {
         map.addSource('measure-line', {
             type: 'geojson',
             data: {
                 type: 'Feature',
                 properties: {},
-                geometry: {
-                    type: 'LineString',
-                    coordinates: coordinates
-                }
+                geometry: { type: 'LineString', coordinates }
             }
         });
         map.addLayer({
@@ -2272,32 +2391,8 @@ map.on('click', (e) => {
                 'line-dasharray': [2, 2]
             }
         });
-    } else {
-        map.getSource('measure-line').setData({
-            type: 'Feature',
-            properties: {},
-            geometry: {
-                type: 'LineString',
-                coordinates: coordinates
-            }
-        });
     }
-
-    // Calculate total distance with auto km/m unit switching
-    if (measurePoints.length > 1) {
-        let totalDist = 0;
-        for (let i = 0; i < measurePoints.length - 1; i++) {
-            totalDist += getDistance(measurePoints[i], measurePoints[i + 1]);
-        }
-        const unitEl = document.getElementById('measure-unit');
-        if (totalDist < 1) {
-            distanceValue.textContent = (totalDist * 1000).toFixed(0);
-            if (unitEl) unitEl.textContent = 'm';
-        } else {
-            distanceValue.textContent = totalDist.toFixed(2);
-            if (unitEl) unitEl.textContent = 'km';
-        }
-    }
+    updateMeasurementDisplay();
 });
 
 
@@ -2312,12 +2407,19 @@ const closeBookmarksBtn = document.getElementById('close-bookmarks');
 const saveLocationBtn = document.getElementById('save-current-location');
 
 function getBookmarks() {
-    const stored = localStorage.getItem('mapBookmarks');
-    return stored ? JSON.parse(stored) : [];
+    try {
+        const stored = localStorage.getItem('mapBookmarks');
+        const parsed = stored ? JSON.parse(stored) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+        return [];
+    }
 }
 
 function saveBookmarks(bookmarks) {
-    localStorage.setItem('mapBookmarks', JSON.stringify(bookmarks));
+    try {
+        localStorage.setItem('mapBookmarks', JSON.stringify(bookmarks));
+    } catch (_) {}
 }
 
 // Global markers array
@@ -2371,7 +2473,7 @@ function renderBookmarks() {
 window.flyToBookmark = function (index) {
     const bookmarks = getBookmarks();
     const b = bookmarks[index];
-    if (b) { map.flyTo({ center: [b.lon, b.lat], zoom: 14, duration: 1500 }); bookmarksPanel.style.display = 'none'; }
+    if (b) { map.flyTo({ center: [b.lon, b.lat], zoom: b.zoom || 14, duration: 1500 }); bookmarksPanel.style.display = 'none'; }
 };
 
 window.deleteBookmark = function (index) {
@@ -2426,19 +2528,182 @@ saveLocationBtn.addEventListener('click', () => {
     input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') doSave(); });
 });
 
-// Share View functionality
+// Deep-Link Share View functionality (encodes view hash + active layers + active filters)
 const shareBtn = document.getElementById('share-btn');
+const SHARE_LAYER_MAP = {
+    '10k': 'layer-10k',
+    '50k': 'layer-50k',
+    'insp': 'layer-inspection',
+    'drone': 'layer-drone-surveys',
+    'arg': 'layer-arg-locations',
+    'thiessen': 'layer-arg-thiessen',
+    'tiz': 'layer-tiz',
+    'tiz50': 'layer-tiz-50k',
+    'satls': 'layer-satellite-ls',
+    'contours': 'layer-contours',
+    'rain': 'layer-ecmwf-rain'
+};
+
 if (shareBtn) {
     shareBtn.addEventListener('click', () => {
-        const url = window.location.href;
-        navigator.clipboard.writeText(url).then(() => {
-            showToast('✅ Link copied to clipboard! Share this exact view.', 'success');
+        const shareUrl = new URL(window.location.href);
+        shareUrl.searchParams.delete('update');
+        const activeLayers = [];
+        for (const [key, id] of Object.entries(SHARE_LAYER_MAP)) {
+            const cb = document.getElementById(id);
+            if (cb && cb.checked) activeLayers.push(key);
+        }
+        shareUrl.searchParams.set('layers', activeLayers.join(','));
+        ['dis', 'd', 'r', 'cat'].forEach(k => {
+            if (currentFilters && currentFilters[k]) shareUrl.searchParams.set(k, currentFilters[k]);
+            else shareUrl.searchParams.delete(k);
+        });
+        navigator.clipboard.writeText(shareUrl.toString()).then(() => {
+            showToast('✅ Deep-link copied! Includes map position, layers & active filters.', 'success');
         }).catch(err => {
             console.error('Failed to copy link: ', err);
             showToast('❌ Failed to copy link.', 'error');
         });
+        if (toolsPanel) toolsPanel.classList.remove('active');
     });
 }
+
+// Restore shared URL layers & filters seamlessly on load
+let _pendingUrlFilters = null;
+window.restorePendingUrlFilters = function () {
+    if (!_pendingUrlFilters) return;
+    const f = _pendingUrlFilters;
+    _pendingUrlFilters = null;
+    const inspCb = document.getElementById('layer-inspection');
+    if (inspCb && !inspCb.checked) {
+        inspCb.checked = true;
+        inspCb.dispatchEvent(new Event('change'));
+    }
+    if (f.dis && DOM.distSelect) DOM.distSelect.value = f.dis;
+    if (typeof updateDropdownStates === 'function') updateDropdownStates();
+    if (f.d && DOM.dsdSelect) DOM.dsdSelect.value = f.d;
+    if (f.r && DOM.riskSelect) DOM.riskSelect.value = f.r;
+    if (f.cat && DOM.natSelect) DOM.natSelect.value = f.cat;
+    if (typeof applyAdvancedFilters === 'function') applyAdvancedFilters();
+    if (typeof zoomToFilteredBounds === 'function') zoomToFilteredBounds();
+};
+
+function applyUrlParamsOnBoot() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const layersParam = params.get('layers');
+        if (layersParam !== null) {
+            const wanted = new Set(layersParam.split(',').map(s => s.trim()).filter(Boolean));
+            const applySharedLayers = () => {
+                for (const [key, id] of Object.entries(SHARE_LAYER_MAP)) {
+                    const cb = document.getElementById(id);
+                    if (!cb) continue;
+                    const shouldCheck = wanted.has(key);
+                    if (cb.checked !== shouldCheck) {
+                        cb.checked = shouldCheck;
+                        cb.dispatchEvent(new Event('change'));
+                    }
+                }
+            };
+            if (map && map.loaded && map.loaded()) applySharedLayers();
+            else if (map) map.once('load', applySharedLayers);
+        }
+        const fDis = params.get('dis') || '';
+        const fD = params.get('d') || '';
+        const fR = params.get('r') || '';
+        const fCat = params.get('cat') || '';
+        if (fDis || fD || fR || fCat) {
+            _pendingUrlFilters = { dis: fDis, d: fD, r: fR, cat: fCat };
+            if (typeof loadSearchIndex === 'function') loadSearchIndex();
+        }
+    } catch (_) {}
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyUrlParamsOnBoot);
+} else {
+    setTimeout(applyUrlParamsOnBoot, 0);
+}
+
+// Open-Space "Site Hazard & Rainfall Check" Popup
+window.showSiteHazardContextPopup = function (point, lngLat) {
+    if (!map || !lngLat) return;
+    const { lng, lat } = lngLat;
+
+    // 1. Check rendered Base Hazard zone polygon (1:10k preferred over 1:50k)
+    let hazardZone = '';
+    let hazardScale = '';
+    try {
+        const hazLayers = ['hazard_10k_fill', 'hazard_50k_fill']
+            .filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+        if (hazLayers.length > 0 && point) {
+            const hHits = map.queryRenderedFeatures(point, { layers: hazLayers });
+            const h10 = hHits.find(f => f.layer && f.layer.id === 'hazard_10k_fill' && f.properties && f.properties.Hazard);
+            const h50 = hHits.find(f => f.layer && f.layer.id === 'hazard_50k_fill' && f.properties && f.properties.Hazard);
+            if (h10) { hazardZone = h10.properties.Hazard; hazardScale = '1:10,000'; }
+            else if (h50) { hazardZone = h50.properties.Hazard; hazardScale = '1:50,000'; }
+        }
+    } catch (_) {}
+
+    // 2. Find nearest recorded inspection site within ~3km from spatialGrid / localSearchIndex
+    let nearestSite = null;
+    let nearestKm = Infinity;
+    let nearbyCount = 0;
+    if (localSearchIndex && localSearchIndex.length > 0) {
+        const deltaDeg = 0.03; // ~3.3 km box
+        const candidates = (typeof spatialGrid !== 'undefined' && Object.keys(spatialGrid).length > 0)
+            ? queryGrid(lng - deltaDeg, lng + deltaDeg, lat - deltaDeg, lat + deltaDeg)
+            : localSearchIndex;
+        const R = 6371;
+        for (let i = 0; i < candidates.length; i++) {
+            const it = candidates[i];
+            const dLat = (it.lat - lat) * Math.PI / 180;
+            const dLon = (it.lon - lng) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat * Math.PI / 180) * Math.cos(it.lat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+            const km = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            if (km <= 3.0) {
+                nearbyCount++;
+                if (km < nearestKm) {
+                    nearestKm = km;
+                    nearestSite = it;
+                }
+            }
+        }
+    }
+
+    // 3. Optional 24h forecast summary if weather module has loaded data
+    const rainInfo = (typeof window.queryRainForecastAt === 'function') ? window.queryRainForecastAt(lng, lat) : null;
+
+    if (!hazardZone && !nearestSite && !rainInfo) return;
+
+    const nearestRef = nearestSite ? escapeHtml((nearestSite.n || 'Site').replace(/NBRO/g, 'NBRI')) : '';
+    const html = `
+        <div style="padding: 12px 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 235px; max-width: 300px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px; margin-bottom:8px; padding-right:20px;">
+                <span style="font-weight:700; color:#38bdf8; font-size:0.84rem;">🧭 Site Hazard & Context</span>
+                <span style="font-size:0.62rem; color:#94a3b8;">${lat.toFixed(4)}, ${lng.toFixed(4)}</span>
+            </div>
+            <div style="font-size:0.74rem; color:#cbd5e1; line-height:1.5; display:flex; flex-direction:column; gap:5px;">
+                ${hazardZone ? `<div><span style="color:#94a3b8;">Base Zone (${hazardScale}):</span><br><b style="color:#fff;">${escapeHtml(hazardZone)}</b></div>` : ''}
+                ${nearestSite ? `<div><span style="color:#94a3b8;">Nearest Recorded Incident (${nearestKm < 1 ? Math.round(nearestKm * 1000) + 'm' : nearestKm.toFixed(2) + 'km'}):</span><br><b style="color:#fff;">${nearestRef}</b> ${riskBadge(nearestSite.r)}<div style="color:#94a3b8; font-size:0.68rem;">${nearbyCount} recorded site${nearbyCount > 1 ? 's' : ''} within 3 km</div></div>` : '<div style="color:#94a3b8;">No recorded incidents within 3 km.</div>'}
+                ${rainInfo ? `<div><span style="color:#94a3b8;">ECMWF 24h Forecast:</span> <b style="color:#38bdf8;">${rainInfo.acc24} mm</b></div>` : ''}
+            </div>
+        </div>
+    `;
+
+    if (window.activeFeaturePopup) {
+        window.activeFeaturePopup.remove();
+        window.activeFeaturePopup = null;
+    }
+    window.activeFeaturePopup = new maplibregl.Popup({
+        className: 'custom-modern-popup',
+        maxWidth: '320px',
+        closeButton: true,
+        closeOnClick: true
+    })
+        .setLngLat([lng, lat])
+        .setHTML(html)
+        .addTo(map);
+};
 
 // Fullscreen functionality
 const fullscreenBtn = document.getElementById('fullscreen-btn');
@@ -2670,6 +2935,9 @@ function checkLayerZoomHints() {
 }
 
 function showLayerZoomHint(rule) {
+    if (_activeZoomHintRule && _activeZoomHintRule.id === rule.id && document.getElementById('inspection-zoom-hint')) {
+        return; // Already showing this exact zoom hint — avoid DOM rebuild on every pan/zoom
+    }
     _activeZoomHintRule = rule;
     let hint = document.getElementById('inspection-zoom-hint');
     if (!hint) {
@@ -2756,10 +3024,51 @@ function dismissInspectionZoomHint() { dismissLayerZoomHint(); }
 // =============================================
 // EXECUTIVE SUMMARY DASHBOARD & LOCAL SEARCH LOGIC
 // =============================================
+// Precompute normalized filter & search fields once per index load (0 allocation during pan/search)
+function matchesDisasterCategory(catLower, filterCat) {
+    if (!filterCat) return true;
+    if (!catLower) return false;
+    if (filterCat === 'Landslide') return catLower.includes('landslide') || catLower.includes('නාය');
+    if (filterCat === 'Cutting Failure') return catLower.includes('cutting') || catLower.includes('කණ්ඩි');
+    if (filterCat === 'Slope Failure') return catLower.includes('slope') || catLower.includes('බැවුම්');
+    if (filterCat === 'Rock Fall') return catLower.includes('rock') || catLower.includes('ගල්');
+    if (filterCat === 'Subsidence') return catLower.includes('sink') || catLower.includes('subsid') || catLower.includes('ගිලා');
+    if (filterCat === 'Other') return catLower.includes('other') || catLower.includes('වෙනත්');
+    return catLower.includes(filterCat.toLowerCase());
+}
+
+function prepareSearchIndex(items) {
+    for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        it._disNorm = cleanName(it.dis || '').toLowerCase();
+        it._dsdNorm = cleanDsdName(it.d || '').toLowerCase();
+        it._cls = classifyRisk(it.r);
+        it._catNorm = (it.cat || '').toLowerCase();
+        const nLower = (it.n || '').toLowerCase();
+        const gLower = (it.g || '').toLowerCase();
+        const dLower = (it.d || '').toLowerCase();
+        const disLower = (it.dis || '').toLowerCase();
+        it._nLower = nLower;
+        it._gLower = gLower;
+        it._dLower = dLower;
+        it._disLower = disLower;
+        it._nCanon = nLower.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/nbri/g, 'nbro').replace(/[^a-z0-9]/g, '');
+        it._qRaw = `${nLower} ${gLower} ${dLower} ${disLower}`.replace(/nbri/g, 'nbro');
+    }
+}
+
+function matchesActiveFilter(item, disNorm, dsdNorm, riskFilter, catFilter) {
+    if (disNorm && item._disNorm !== disNorm) return false;
+    if (dsdNorm && item._dsdNorm !== dsdNorm) return false;
+    if (catFilter && !matchesDisasterCategory(item._catNorm, catFilter)) return false;
+    if (riskFilter && item._cls !== riskFilter) return false;
+    return true;
+}
+
 // Lazy-load search index on first keystroke / dashboard load
 let _searchIndexLoading = false;
-async function loadSearchIndex() {
-    if (localSearchIndex.length > 0 || _searchIndexLoading) return;
+async function loadSearchIndex(forceNetwork = false) {
+    if (!forceNetwork && (localSearchIndex.length > 0 || _searchIndexLoading)) return;
     _searchIndexLoading = true;
     try {
         let loaded = false;
@@ -2767,7 +3076,7 @@ async function loadSearchIndex() {
         const targetCount = summaryStats ? summaryStats.total_mapped : null;
 
         // PERF-3: Check IndexedDB with automatic cloud-sync validation
-        if (window.indexedDB) {
+        if (!forceNetwork && window.indexedDB) {
             try {
                 const cached = await idbGet('search_index_data');
                 const cachedMeta = await idbGet('search_index_meta');
@@ -2785,7 +3094,7 @@ async function loadSearchIndex() {
             } catch(e) { /* IndexedDB unavailable, fall through to fetch */ }
         }
         if (!loaded) {
-            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v85'}`;
+            const url = `${DATA_BASE_URL}/search_index.json?v=${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v88'}`;
             const res = await fetch(url);
             if (res.ok) {
                 localSearchIndex = await res.json();
@@ -2799,12 +3108,16 @@ async function loadSearchIndex() {
                 }
             }
         }
+        prepareSearchIndex(localSearchIndex);
         // PERF-1: Build grid spatial index for fast viewport queries
         buildSpatialGrid();
         // PERF-2: Pre-compute island-wide district totals once (avoids full scan on every pan)
+        _cacheBuiltForFilter = null;
         buildGlobalCache();
         updateViewportStats();
         initQueryDropdowns();
+        if (typeof window.restorePendingUrlFilters === 'function') window.restorePendingUrlFilters();
+        if (typeof window.refreshWeatherHrWarnings === 'function') window.refreshWeatherHrWarnings();
     } catch (e) {
         console.error('Failed to load search index:', e);
     } finally {
@@ -2865,23 +3178,20 @@ function buildGlobalCache() {
     _cacheBuiltForFilter = filterKey;
     _cachedDistrictMap = {};
     _cachedGlobalTotals = { total: 0, hr: 0, mr: 0, lr: 0, none: 0 };
+    const disNorm = currentFilters.dis ? cleanName(currentFilters.dis).toLowerCase() : '';
+    const dsdNorm = currentFilters.d ? cleanDsdName(currentFilters.d).toLowerCase() : '';
+    const rFlt = currentFilters.r || '';
+    const catFlt = currentFilters.cat || '';
     for (let i = 0; i < localSearchIndex.length; i++) {
         const item = localSearchIndex[i];
-        if (currentFilters.dis && item.dis.trim().toLowerCase() !== currentFilters.dis.trim().toLowerCase()) continue;
-        if (currentFilters.d && item.d.trim().toLowerCase() !== currentFilters.d.trim().toLowerCase()) continue;
-        if (currentFilters.cat && !(item.cat || '').includes(currentFilters.cat)) continue;
-        const cls = classifyRisk(item.r);
-        if (currentFilters.r) {
-            if (currentFilters.r === 'HR' && cls !== 'HR') continue;
-            if (currentFilters.r === 'MR' && cls !== 'MR') continue;
-            if (currentFilters.r === 'LR' && cls !== 'LR') continue;
-        }
+        if (!matchesActiveFilter(item, disNorm, dsdNorm, rFlt, catFlt)) continue;
+        const cls = item._cls || classifyRisk(item.r);
         _cachedGlobalTotals.total++;
         if      (cls === 'HR') _cachedGlobalTotals.hr++;
         else if (cls === 'MR') _cachedGlobalTotals.mr++;
         else if (cls === 'LR') _cachedGlobalTotals.lr++;
         else                   _cachedGlobalTotals.none++;
-        const distName = item.dis || 'Unknown';
+        const distName = cleanName(item.dis || '') || 'Unknown';
         if (!_cachedDistrictMap[distName]) _cachedDistrictMap[distName] = { total:0, hr:0, mr:0, lr:0 };
         _cachedDistrictMap[distName].total++;
         if      (cls === 'HR') _cachedDistrictMap[distName].hr++;
@@ -2927,7 +3237,7 @@ async function loadDashboardAndSearchData() {
     try {
         // PERF-MOB-3: Use default browser cache (IDB version-stamp already handles staleness detection).
         // cache:'no-cache' was forcing a full network revalidation on every single page load.
-        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v85';
+        const versionParam = typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v88';
         const res = await fetch(`${DATA_BASE_URL}/summary.json?v=${versionParam}`, { cache: 'default' });
         if (res.ok) {
             const freshStats = await res.json();
@@ -2940,7 +3250,11 @@ async function loadDashboardAndSearchData() {
         console.warn('summary.json network fetch failed (offline mode active):', e);
     }
     // Force load search index immediately, checking for cloud-sync alignment
-    await loadSearchIndex();
+    const countMismatch = summaryStats && localSearchIndex.length > 0 && summaryStats.total_mapped && localSearchIndex.length !== summaryStats.total_mapped;
+    if (countMismatch) {
+        localSearchIndex = [];
+    }
+    await loadSearchIndex(!!countMismatch);
 }
 
 function populateDashboard(data) {
@@ -2980,7 +3294,8 @@ function populateDashboard(data) {
 
 function flyToDistrict(districtName) {
     if (!localSearchIndex || localSearchIndex.length === 0) return;
-    const points = localSearchIndex.filter(p => p.dis.toLowerCase() === districtName.toLowerCase());
+    const targetNorm = cleanName(districtName).toLowerCase();
+    const points = localSearchIndex.filter(p => (p._disNorm || cleanName(p.dis).toLowerCase()) === targetNorm);
     if (points.length === 0) return;
     
     let sumLat = 0, sumLon = 0;
@@ -3038,12 +3353,19 @@ function riskBadge(r) {
     return `<span style="font-size:0.7rem;font-weight:700;padding:2px 7px;border-radius:12px;${styles[cls]}">${labels[cls]}</span>`;
 }
 
-// Animate number change
+// Animate number change (zero innerHTML churn per animation frame)
 function animateKpi(el, newVal) {
     if (!el) return;
     const current = parseInt(el.dataset.val || '0', 10);
     if (el.dataset.val !== undefined && current === newVal) return;
     el.dataset.val = newVal;
+    if (el._animRaf) cancelAnimationFrame(el._animRaf);
+
+    let numSpan = el.querySelector('.kpi-num');
+    if (!numSpan) {
+        el.innerHTML = `<span class="kpi-num">${current.toLocaleString()}</span><span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">in view</span>`;
+        numSpan = el.querySelector('.kpi-num');
+    }
     const duration = 400;
     const start = performance.now();
     const from = current;
@@ -3051,11 +3373,14 @@ function animateKpi(el, newVal) {
         const t = Math.min((now - start) / duration, 1);
         const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
         const val = Math.round(from + (newVal - from) * eased);
-        el.innerHTML = `${val.toLocaleString()}<span style="font-size:0.65rem;color:inherit;opacity:0.6;font-weight:normal;display:block;margin-top:1px;">in view</span>`;
-        if (t < 1) requestAnimationFrame(step);
+        numSpan.textContent = val.toLocaleString();
+        if (t < 1) el._animRaf = requestAnimationFrame(step);
+        else el._animRaf = null;
     }
-    requestAnimationFrame(step);
+    el._animRaf = requestAnimationFrame(step);
 }
+
+let _lastRenderedTableFilterKey = null;
 
 function updateViewportStats() {
     // Use pre-cached DOM refs (set once at DOMContentLoaded) — avoids 13 tree traversals per moveend
@@ -3091,6 +3416,10 @@ function updateViewportStats() {
     const bounds = map.getBounds();
     const west = bounds.getWest(), east = bounds.getEast();
     const south = bounds.getSouth(), north = bounds.getNorth();
+    const disNorm = currentFilters.dis ? cleanName(currentFilters.dis).toLowerCase() : '';
+    const dsdNorm = currentFilters.d ? cleanDsdName(currentFilters.d).toLowerCase() : '';
+    const rFlt = currentFilters.r || '';
+    const catFlt = currentFilters.cat || '';
 
     let totalInView = 0, hrInView = 0, mrInView = 0, lrInView = 0, hrP1InView = 0;
     const viewportItems = Object.keys(spatialGrid).length > 0
@@ -3099,17 +3428,10 @@ function updateViewportStats() {
 
     for (let i = 0; i < viewportItems.length; i++) {
         const item = viewportItems[i];
-        if (currentFilters.dis && item.dis.trim().toLowerCase() !== currentFilters.dis.trim().toLowerCase()) continue;
-        if (currentFilters.d && item.d.trim().toLowerCase() !== currentFilters.d.trim().toLowerCase()) continue;
-        if (currentFilters.cat && !(item.cat || '').includes(currentFilters.cat)) continue;
-        const cls = classifyRisk(item.r);
-        if (currentFilters.r) {
-            if (currentFilters.r === 'HR' && cls !== 'HR') continue;
-            if (currentFilters.r === 'MR' && cls !== 'MR') continue;
-            if (currentFilters.r === 'LR' && cls !== 'LR') continue;
-        }
+        if (!matchesActiveFilter(item, disNorm, dsdNorm, rFlt, catFlt)) continue;
+        const cls = item._cls || classifyRisk(item.r);
         totalInView++;
-        if      (cls === 'HR') {
+        if (cls === 'HR') {
             hrInView++;
             const rStr = (item.r || '').toUpperCase();
             if (rStr.includes('P1') || rStr.includes('HR1')) hrP1InView++;
@@ -3179,8 +3501,9 @@ function updateViewportStats() {
         if (barNone) barNone.style.width = pct(_cachedGlobalTotals.none);
     }
 
-    // Populate district-wise table from pre-built cache (zero scan cost)
-    if (tbody) {
+    // Populate district-wise table only when filter/dataset changed (avoids rebuilding DOM on every pan)
+    if (tbody && (_lastRenderedTableFilterKey !== _cacheBuiltForFilter || tbody.children.length === 0)) {
+        _lastRenderedTableFilterKey = _cacheBuiltForFilter;
         if (gTotal === 0) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#475569;padding:12px 0;">No matching incidents</td></tr>';
         } else {
@@ -3189,14 +3512,13 @@ function updateViewportStats() {
                 if (b[1].total !== a[1].total) return b[1].total - a[1].total;
                 return a[0].localeCompare(b[0]); // IMP 4 FIX: alphabetical tiebreaker for stable sort
             });
-            tbody.innerHTML = '';
+            const frag = document.createDocumentFragment();
             districts.forEach(([name, d]) => {
                 const tr = document.createElement('tr');
                 tr.style.cursor = 'pointer';
                 tr.title = `Click to fly to ${name} District`;
                 tr.addEventListener('click', () => flyToDistrict(name));
-                // BUG 1 FIX: inject name directly in template — no fragile post-hoc querySelector needed
-                const safeName = name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const safeName = escapeHtml(name);
                 tr.innerHTML = `
                     <td style="font-size:0.72rem;color:#e2e8f0;font-weight:500;">${safeName}</td>
                     <td style="font-size:0.72rem;color:#a78bfa;font-weight:600;">${d.total}</td>
@@ -3204,8 +3526,10 @@ function updateViewportStats() {
                     <td style="font-size:0.72rem;color:#fbbf24;">${d.mr || '—'}</td>
                     <td style="font-size:0.72rem;color:#4ade80;">${d.lr || '—'}</td>
                 `;
-                tbody.appendChild(tr);
+                frag.appendChild(tr);
             });
+            tbody.innerHTML = '';
+            tbody.appendChild(frag);
         }
     }
 
@@ -3235,12 +3559,10 @@ map.on('moveend', () => {
 // =====================================================
 (function() {
     const fabDefs = [
-        { id: 'locate-btn',   label: 'Find My Location' },
-        { id: 'bookmark-btn', label: 'Bookmarks' },
-        { id: 'measure-btn',  label: 'Measure Distance' },
-        { id: 'view3d-btn',   label: '3D Terrain View' },
-        { id: 'share-btn',    label: 'Share Map View' },
-        { id: 'fullscreen-btn',label: 'Toggle Fullscreen' }
+        { id: 'locate-btn',     label: 'Find My Location' },
+        { id: 'bookmark-btn',   label: 'Bookmarks' },
+        { id: 'tools-menu-btn', label: 'Map Tools' },
+        { id: 'fullscreen-btn', label: 'Toggle Fullscreen' }
     ];
 
     // Create shared tooltip element
@@ -3374,7 +3696,10 @@ function buildOptions(set, selectEl) {
     const currentVal = selectEl.value;
     const options = Array.from(set).sort();
     const defaultOption = selectEl.options[0].outerHTML;
-    selectEl.innerHTML = defaultOption + options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+    selectEl.innerHTML = defaultOption + options.map(opt => {
+        const safe = escapeHtml(opt);
+        return `<option value="${safe}">${safe}</option>`;
+    }).join('');
     if (options.includes(currentVal)) selectEl.value = currentVal;
 }
 
@@ -3414,19 +3739,15 @@ function resetAllFilters() {
 function zoomToFilteredBounds() {
     if (!localSearchIndex || localSearchIndex.length === 0) return;
 
-    // Filter items according to currentFilters
-    const matchedItems = localSearchIndex.filter(item => {
-        if (currentFilters.dis && item.dis.trim().toLowerCase() !== currentFilters.dis.trim().toLowerCase()) return false;
-        if (currentFilters.d && item.d.trim().toLowerCase() !== currentFilters.d.trim().toLowerCase()) return false;
-        if (currentFilters.cat && !(item.cat || '').includes(currentFilters.cat)) return false;
-        if (currentFilters.r) {
-            const cls = classifyRisk(item.r);
-            if (currentFilters.r === 'HR' && cls !== 'HR') return false;
-            if (currentFilters.r === 'MR' && cls !== 'MR') return false;
-            if (currentFilters.r === 'LR' && cls !== 'LR') return false;
-        }
-        return true;
-    });
+    const disNorm = currentFilters.dis ? cleanName(currentFilters.dis).toLowerCase() : '';
+    const dsdNorm = currentFilters.d ? cleanDsdName(currentFilters.d).toLowerCase() : '';
+    const rFlt = currentFilters.r || '';
+    const catFlt = currentFilters.cat || '';
+
+    // Filter items according to currentFilters using normalized values
+    const matchedItems = localSearchIndex.filter(item =>
+        matchesActiveFilter(item, disNorm, dsdNorm, rFlt, catFlt)
+    );
 
     if (matchedItems.length === 0) return;
 
@@ -3438,7 +3759,7 @@ function zoomToFilteredBounds() {
         if (item.lat > maxLat) maxLat = item.lat;
     });
 
-    // Auto-ensure inspection layer is loaded & visible whenever user queries
+    // Auto-ensure inspection layer is loaded, visible & legend synced whenever user queries
     if (!window.inspectionLoaded && window.loadInspection) {
         window.loadInspection();
     }
@@ -3452,6 +3773,7 @@ function zoomToFilteredBounds() {
         const dashPanel = document.getElementById('dashboard-panel');
         if (advPanel) advPanel.style.display = 'flex';
         if (dashPanel) dashPanel.style.display = 'flex';
+        if (typeof updateLegend === 'function') updateLegend();
     }
 
     if (matchedItems.length === 1) {
@@ -3499,9 +3821,11 @@ function applyAdvancedFilters() {
     const filterArray = ['all'];
     
     if (currentFilters.dis) {
-        filterArray.push(['any', 
-            ['==', ['get', 'District'], currentFilters.dis],
-            ['==', ['upcase', ['coalesce', ['get', 'District'], '']], currentFilters.dis.toUpperCase()]
+        const dUp = currentFilters.dis.trim().toUpperCase();
+        const dHyphen = dUp.replace(/ /g, '-');
+        filterArray.push(['any',
+            ['==', ['upcase', ['coalesce', ['get', 'District'], '']], dUp],
+            ['==', ['upcase', ['coalesce', ['get', 'District'], '']], dHyphen]
         ]);
     }
     
@@ -3538,10 +3862,10 @@ function applyAdvancedFilters() {
     
     if (currentFilters.d) {
         const cleanD = currentFilters.d.trim();
-        filterArray.push(['any', 
+        const cleanDUp = cleanD.toUpperCase();
+        filterArray.push(['any',
             ['==', ['get', 'DSD'], cleanD],
-            ['in', cleanD, ['coalesce', ['get', 'DSD'], '']],
-            ['==', ['upcase', ['coalesce', ['get', 'DSD'], '']], cleanD.toUpperCase()]
+            ['in', cleanDUp, ['upcase', ['coalesce', ['get', 'DSD'], '']]]
         ]);
     }
     
@@ -3580,12 +3904,13 @@ function applyAdvancedFilters() {
         }
     }
     
-    // Apply filter to map
-    if (!window.inspectionLoaded && window.loadInspection) {
+    // Apply filter to map (store globally so lazy-loaded inspection_points picks it up)
+    window._activeMapFilter = filterArray.length > 1 ? filterArray : null;
+    if (!window.inspectionLoaded && typeof window.loadInspection === 'function') {
         window.loadInspection();
     }
     if (map.getLayer('inspection_points')) {
-        map.setFilter('inspection_points', filterArray.length > 1 ? filterArray : null);
+        map.setFilter('inspection_points', window._activeMapFilter);
     }
     
     // Trigger viewport update so Executive Summary matches the filter!
@@ -3744,10 +4069,21 @@ function applyAdvancedFilters() {
         [200.0, 255, 100, 220, 255]
     ];
 
-    // Build precomputed LUT for sub-millisecond pixel lookups
+    // Detect CPU endianness once for direct Uint32 ImageData writes
+    const IS_LITTLE_ENDIAN = (() => {
+        const u32 = new Uint32Array(1);
+        const u8 = new Uint8Array(u32.buffer);
+        u8[0] = 1; u8[1] = 2; u8[2] = 3; u8[3] = 4;
+        return u32[0] === 0x04030201;
+    })();
+
+    // Build precomputed LUT for sub-millisecond pixel lookups (Uint32 + alpha LUT)
     function buildLUT(ramp, maxVal, step) {
         const count = Math.ceil(maxVal / step) + 1;
         const lut = new Uint8ClampedArray(count * 4);
+        const lut32 = new Uint32Array(count);
+        const lutRgb24 = new Uint32Array(count);
+        const lutAlpha = new Uint8Array(count);
         for (let i = 0; i < count; i++) {
             const v = i * step;
             let r = 0, g = 0, b = 0, a = 0;
@@ -3773,8 +4109,18 @@ function applyAdvancedFilters() {
             lut[offset + 1] = g;
             lut[offset + 2] = b;
             lut[offset + 3] = a;
+            lutAlpha[i] = a;
+            if (IS_LITTLE_ENDIAN) {
+                const rgb24 = r | (g << 8) | (b << 16);
+                lutRgb24[i] = rgb24;
+                lut32[i] = (rgb24 | (a << 24)) >>> 0;
+            } else {
+                const rgb24 = (r << 24) | (g << 16) | (b << 8);
+                lutRgb24[i] = rgb24;
+                lut32[i] = (rgb24 | a) >>> 0;
+            }
         }
-        return { lut, maxVal, step, count };
+        return { lut, lut32, lutRgb24, lutAlpha, maxVal, step, count };
     }
 
     const RATE_LUT = buildLUT(RATE_RAMP, 100.0, 0.1);
@@ -3795,11 +4141,12 @@ function applyAdvancedFilters() {
         STATE.canvas.height = STATE.height;
         STATE.ctx = STATE.canvas.getContext('2d', { willReadFrequently: true });
         STATE.imgData = STATE.ctx.createImageData(STATE.width, STATE.height);
+        STATE.imgBuf32 = new Uint32Array(STATE.imgData.data.buffer);
     }
 
-    // Precomputed spatial coordinate lookups for sub-millisecond bilinear rasterization
-    let COL_LOOKUP = null;
-    let ROW_LOOKUP = null;
+    // Precomputed typed spatial coordinate lookups for sub-millisecond bilinear rasterization
+    let COL_C0 = null, COL_C1 = null, COL_FX = null, COL_EDGEX = null;
+    let ROW_R0OFF = null, ROW_R1OFF = null, ROW_FY = null, ROW_EDGEY = null;
 
     function buildSpatialLUT() {
         const w = STATE.width;
@@ -3809,34 +4156,60 @@ function applyAdvancedFilters() {
         const colScale = maxColIdx / (w - 1);
         const rowScale = maxRowIdx / (h - 1);
 
-        COL_LOOKUP = new Array(w);
+        COL_C0 = new Uint8Array(w);
+        COL_C1 = new Uint8Array(w);
+        COL_FX = new Float32Array(w);
+        COL_EDGEX = new Uint8Array(w);
         for (let x = 0; x < w; x++) {
             const u = x * colScale;
             const c0 = Math.floor(u);
-            const c1 = Math.min(maxColIdx, c0 + 1);
-            const fx = u - c0;
-            const edgeDistX = Math.min(x, w - 1 - x);
-            COL_LOOKUP[x] = { c0, c1, fx, edgeDistX };
+            COL_C0[x] = c0;
+            COL_C1[x] = Math.min(maxColIdx, c0 + 1);
+            COL_FX[x] = u - c0;
+            COL_EDGEX[x] = Math.min(x, w - 1 - x);
         }
 
-        ROW_LOOKUP = new Array(h);
+        ROW_R0OFF = new Uint16Array(h);
+        ROW_R1OFF = new Uint16Array(h);
+        ROW_FY = new Float32Array(h);
+        ROW_EDGEY = new Uint8Array(h);
         for (let y = 0; y < h; y++) {
             const v = y * rowScale;
             const r0 = Math.floor(v);
             const r1 = Math.min(maxRowIdx, r0 + 1);
-            const fy = v - r0;
-            const r0Off = r0 * COLS;
-            const r1Off = r1 * COLS;
-            const edgeDistY = Math.min(y, h - 1 - y);
-            ROW_LOOKUP[y] = { r0Off, r1Off, fy, edgeDistY };
+            ROW_R0OFF[y] = r0 * COLS;
+            ROW_R1OFF[y] = r1 * COLS;
+            ROW_FY[y] = v - r0;
+            ROW_EDGEY[y] = Math.min(y, h - 1 - y);
         }
     }
 
-    // Bilinear Interpolation High-Performance Rasterizer onto Canvas
+    function refreshRainCanvasSource() {
+        if (typeof map === 'undefined') return;
+        const src = map.getSource('ecmwf-rain-source');
+        if (!src) {
+            map.triggerRepaint();
+            return;
+        }
+        const hasActiveTiles = !!(src.tiles && Object.keys(src.tiles).length > 0);
+        if (src.texture && hasActiveTiles && typeof src.play === 'function' && typeof src.pause === 'function') {
+            src.play();
+            src.pause();
+        } else if (typeof src.play === 'function') {
+            src.play();
+            map.once('idle', () => {
+                const s = map.getSource('ecmwf-rain-source');
+                if (s && typeof s.pause === 'function') s.pause();
+            });
+        }
+        map.triggerRepaint();
+    }
+
+    // Bilinear Interpolation High-Performance Uint32 Rasterizer onto Canvas
     function renderFrame(hourIdx) {
         if (!STATE.data || !STATE.data.frames) return;
         setupCanvas();
-        if (!COL_LOOKUP || !ROW_LOOKUP) buildSpatialLUT();
+        if (!COL_C0 || !ROW_R0OFF) buildSpatialLUT();
 
         let activeFrames = STATE.data.frames;
         let lutObj = RATE_LUT;
@@ -3849,58 +4222,57 @@ function applyAdvancedFilters() {
         }
 
         const grid = activeFrames[hourIdx] || activeFrames[0];
-        const { lut, step, count } = lutObj;
+        const { lut32, lutRgb24, lutAlpha, step, count } = lutObj;
+        const invStep = 1.0 / step;
+        const maxLutIdx = count - 1;
 
         const w = STATE.width;
         const h = STATE.height;
-        const d = STATE.imgData.data;
+        const d32 = STATE.imgBuf32;
 
         let pixelIdx = 0;
         for (let y = 0; y < h; y++) {
-            const rowInfo = ROW_LOOKUP[y];
-            const r0Off = rowInfo.r0Off;
-            const r1Off = rowInfo.r1Off;
-            const fy = rowInfo.fy;
-            const edgeDistY = rowInfo.edgeDistY;
+            const r0Off = ROW_R0OFF[y];
+            const r1Off = ROW_R1OFF[y];
+            const fy = ROW_FY[y];
+            const edgeDistY = ROW_EDGEY[y];
 
             for (let x = 0; x < w; x++) {
-                const colInfo = COL_LOOKUP[x];
-                const fx = colInfo.fx;
+                const c0 = COL_C0[x];
+                const c1 = COL_C1[x];
+                const fx = COL_FX[x];
 
-                const v00 = grid[r0Off + colInfo.c0] || 0;
-                const v10 = grid[r0Off + colInfo.c1] || 0;
-                const v01 = grid[r1Off + colInfo.c0] || 0;
-                const v11 = grid[r1Off + colInfo.c1] || 0;
+                const v00 = grid[r0Off + c0] || 0;
+                const v10 = grid[r0Off + c1] || 0;
+                const v01 = grid[r1Off + c0] || 0;
+                const v11 = grid[r1Off + c1] || 0;
 
                 const vTop = v00 + (v10 - v00) * fx;
                 const vBottom = v01 + (v11 - v01) * fx;
                 const val = vTop + (vBottom - vTop) * fy;
 
                 if (val < 0.05) {
-                    d[pixelIdx] = 0;
-                    d[pixelIdx + 1] = 0;
-                    d[pixelIdx + 2] = 0;
-                    d[pixelIdx + 3] = 0;
+                    d32[pixelIdx++] = 0;
                 } else {
-                    const edgeDist = Math.min(colInfo.edgeDistX, edgeDistY);
-                    const edgeFade = edgeDist < 10 ? (edgeDist * 0.1) : 1.0;
+                    const edgeDistX = COL_EDGEX[x];
+                    const edgeDist = edgeDistX < edgeDistY ? edgeDistX : edgeDistY;
+                    let cIdx = Math.round(val * invStep);
+                    if (cIdx > maxLutIdx) cIdx = maxLutIdx;
 
-                    const lutIdx = Math.min(count - 1, Math.round(val / step)) * 4;
-                    d[pixelIdx] = lut[lutIdx];
-                    d[pixelIdx + 1] = lut[lutIdx + 1];
-                    d[pixelIdx + 2] = lut[lutIdx + 2];
-                    d[pixelIdx + 3] = Math.round(lut[lutIdx + 3] * edgeFade);
+                    if (edgeDist >= 10) {
+                        d32[pixelIdx++] = lut32[cIdx];
+                    } else {
+                        const a = Math.round(lutAlpha[cIdx] * (edgeDist * 0.1));
+                        d32[pixelIdx++] = IS_LITTLE_ENDIAN
+                            ? ((lutRgb24[cIdx] | (a << 24)) >>> 0)
+                            : ((lutRgb24[cIdx] | a) >>> 0);
+                    }
                 }
-                pixelIdx += 4;
             }
         }
 
         STATE.ctx.putImageData(STATE.imgData, 0, 0);
-
-        // Force MapLibre to update texture if source exists
-        if (typeof map !== 'undefined' && map.getSource('ecmwf-rain-source')) {
-            map.triggerRepaint();
-        }
+        refreshRainCanvasSource();
     }
 
     // Precalculate forward 3h and 24h accumulated predictions for each forecast hour
@@ -4045,7 +4417,7 @@ function applyAdvancedFilters() {
         return (lastTimeMs - nowMs >= 72 * 3600 * 1000);
     }
 
-    // Store master raw dataset and bounds
+    // Store master raw dataset and bounds (reset spatial LUT if grid geometry changes)
     function setMasterDataset(data) {
         STATE.data = data;
         STATE.rawTimes = [...data.times];
@@ -4054,6 +4426,8 @@ function applyAdvancedFilters() {
         if (data.bounds) BOUNDS = data.bounds;
         if (data.rows) ROWS = data.rows;
         if (data.cols) COLS = data.cols;
+        COL_C0 = null;
+        ROW_R0OFF = null;
     }
 
     // Anchor working timeline dynamically to current real-time hour (NOW = 0, capped to 73 steps = +72h)
@@ -4140,35 +4514,38 @@ function applyAdvancedFilters() {
         const tagInfo = document.getElementById('weather-tag-info');
         if (tagInfo) tagInfo.textContent = 'Connecting...';
 
-        const vKey = (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'v85');
-        const CACHE_KEY = 'ecmwf_rain_cache_' + vKey;
-        const CACHE_TS_KEY = 'ecmwf_rain_ts_' + vKey;
+        const IDB_CACHE_KEY = 'ecmwf_rain_cache_v2';
+
+        // Clean legacy localStorage rain caches once so quota isn't wasted by ~1MB JSON strings
+        try {
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+                const k = localStorage.key(i);
+                if (k && (k.startsWith('ecmwf_rain_cache_') || k.startsWith('ecmwf_rain_ts_'))) {
+                    localStorage.removeItem(k);
+                }
+            }
+        } catch (_) {}
 
         let gotData = false;
 
-        // 1. Check client-side localStorage cache (2h TTL, with instant preview if >2h old)
+        // 1. Check IndexedDB cache (async, non-blocking, 2h TTL with instant preview if >2h old)
         let hasPreview = false;
-        if (!forceRefresh) {
+        if (!forceRefresh && window.indexedDB && typeof idbGet === 'function') {
             try {
-                const cachedStr = localStorage.getItem(CACHE_KEY);
-                const cachedTs = parseInt(localStorage.getItem(CACHE_TS_KEY) || '0', 10);
-                if (cachedStr) {
-                    const parsed = JSON.parse(cachedStr);
-                    if (hasValidFutureData(parsed)) {
-                        setMasterDataset(parsed);
-                        if (Date.now() - cachedTs < 2 * 3600 * 1000) {
-                            STATE.lastRefreshedAt = cachedTs;
-                            gotData = true;
-                            console.log('🌧️ [ECMWF] Loaded fresh data from client localStorage cache.');
-                        } else {
-                            syncTimelineToCurrentHour();
-                            hasPreview = true;
-                            console.log('🌧️ [ECMWF] Rendered cached preview; refreshing from live Open-Meteo API...');
-                        }
+                const entry = await idbGet(IDB_CACHE_KEY);
+                if (entry && entry.data && hasValidFutureData(entry.data)) {
+                    setMasterDataset(entry.data);
+                    const cachedTs = entry.ts || 0;
+                    if (Date.now() - cachedTs < 2 * 3600 * 1000) {
+                        STATE.lastRefreshedAt = cachedTs;
+                        gotData = true;
+                    } else {
+                        syncTimelineToCurrentHour();
+                        hasPreview = true;
                     }
                 }
             } catch (e) {
-                console.warn('🌧️ [ECMWF] localStorage read error:', e);
+                console.warn('🌧️ [ECMWF] IndexedDB cache read error:', e);
             }
         }
 
@@ -4180,11 +4557,9 @@ function applyAdvancedFilters() {
                 if (liveData && liveData.times && liveData.times.length > 0) {
                     setMasterDataset(liveData);
                     gotData = true;
-                    try {
-                        localStorage.setItem(CACHE_KEY, JSON.stringify(liveData));
-                        localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
-                    } catch (_) {}
-                    console.log('🌧️ [ECMWF] Direct Open-Meteo ECMWF live fetch successful.');
+                    if (window.indexedDB && typeof idbSet === 'function') {
+                        idbSet(IDB_CACHE_KEY, { ts: Date.now(), data: liveData }).catch(() => {});
+                    }
                 }
             } catch (apiErr) {
                 console.error('🌧️ [ECMWF] Direct API fetch failed:', apiErr);
@@ -4301,7 +4676,7 @@ function applyAdvancedFilters() {
                     [BOUNDS[2], BOUNDS[1]], // Bottom Right (SE)
                     [BOUNDS[0], BOUNDS[1]]  // Bottom Left (SW)
                 ],
-                animate: true
+                animate: false
             });
         }
 
@@ -4328,6 +4703,8 @@ function applyAdvancedFilters() {
 
     function detachMapLayer() {
         if (typeof map === 'undefined') return;
+        const src = map.getSource('ecmwf-rain-source');
+        if (src && typeof src.pause === 'function') src.pause();
         if (map.getLayer('ecmwf-rain-layer')) {
             map.setLayoutProperty('ecmwf-rain-layer', 'visibility', 'none');
         }
@@ -4438,8 +4815,112 @@ function applyAdvancedFilters() {
             if (STATE.activePopup && STATE.activePopup.isOpen() && STATE.lastClickedCoord) {
                 showWeatherPopup(STATE.lastClickedCoord.lng, STATE.lastClickedCoord.lat, true);
             }
+            updateHrWeatherAlertSummary();
         }
     }
+
+    // Cross-reference 24h forward rainfall grid with High-Risk sites in localSearchIndex
+    let _hrWarnMatches = [];
+    let _hrWarnCycleIdx = 0;
+
+    function updateHrWeatherAlertSummary() {
+        const pill = document.getElementById('weather-hr-warning-pill');
+        if (!pill) return;
+        if (!STATE.loaded || !STATE.acc24Frames || !localSearchIndex || localSearchIndex.length === 0) {
+            pill.style.display = 'none';
+            return;
+        }
+        const frame24 = STATE.acc24Frames[STATE.currentHour];
+        if (!frame24) {
+            pill.style.display = 'none';
+            return;
+        }
+
+        const lonSpan = BOUNDS[2] - BOUNDS[0];
+        const latSpan = BOUNDS[3] - BOUNDS[1];
+        const maxC = COLS - 1;
+        const maxR = ROWS - 1;
+
+        const alerts = [];
+        const byDistrict = {};
+        let lvl3Count = 0, lvl2Count = 0, lvl1Count = 0;
+
+        for (let i = 0; i < localSearchIndex.length; i++) {
+            const it = localSearchIndex[i];
+            const cls = it._cls || classifyRisk(it.r);
+            if (cls !== 'HR') continue;
+            if (it.lon < BOUNDS[0] || it.lon > BOUNDS[2] || it.lat < BOUNDS[1] || it.lat > BOUNDS[3]) continue;
+
+            const cFrac = ((it.lon - BOUNDS[0]) / lonSpan) * maxC;
+            const rFrac = ((BOUNDS[3] - it.lat) / latSpan) * maxR;
+            const c0 = Math.floor(cFrac);
+            const c1 = Math.min(maxC, c0 + 1);
+            const fx = cFrac - c0;
+            const r0 = Math.floor(rFrac);
+            const r1 = Math.min(maxR, r0 + 1);
+            const fy = rFrac - r0;
+
+            const top = (frame24[r0 * COLS + c0] || 0) + ((frame24[r0 * COLS + c1] || 0) - (frame24[r0 * COLS + c0] || 0)) * fx;
+            const bot = (frame24[r1 * COLS + c0] || 0) + ((frame24[r1 * COLS + c1] || 0) - (frame24[r1 * COLS + c0] || 0)) * fx;
+            const mm24 = top + (bot - top) * fy;
+
+            if (mm24 >= 75) {
+                if (mm24 >= 150) lvl3Count++;
+                else if (mm24 >= 100) lvl2Count++;
+                else lvl1Count++;
+                const dist = cleanName(it.dis || '') || 'Other';
+                byDistrict[dist] = (byDistrict[dist] || 0) + 1;
+                alerts.push({ item: it, mm24 });
+            }
+        }
+
+        if (alerts.length === 0) {
+            _hrWarnMatches = [];
+            pill.style.display = 'none';
+            return;
+        }
+
+        alerts.sort((a, b) => b.mm24 - a.mm24);
+        _hrWarnMatches = alerts;
+        _hrWarnCycleIdx = 0;
+
+        const topDists = Object.entries(byDistrict)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([d, n]) => `${escapeHtml(d)}: ${n}`)
+            .join(', ');
+
+        let levelClass = 'warn-l1';
+        let icon = '⚠️';
+        let thresholdLabel = '≥75mm';
+        if (lvl3Count > 0) { levelClass = 'warn-l3'; icon = '🛑'; thresholdLabel = '≥150mm'; }
+        else if (lvl2Count > 0) { levelClass = 'warn-l2'; icon = '🚨'; thresholdLabel = '≥100mm'; }
+
+        pill.className = `weather-hr-warning ${levelClass}`;
+        pill.style.display = 'flex';
+        const peakSiteName = ((alerts[0].item.n || 'HR site') + '').replace(/NBRO/g, 'NBRI');
+        pill.innerHTML = `<span>${icon} <b>${alerts.length}</b> HR site${alerts.length > 1 ? 's' : ''} in 24h warning (${thresholdLabel} · ${topDists})</span><span class="weather-hr-cta">Inspect Peak →</span>`;
+        pill.title = `Peak HR site: ${peakSiteName} (${alerts[0].mm24.toFixed(0)} mm/24h). Click to cycle high-risk sites.`;
+        pill.onclick = () => {
+            if (_hrWarnMatches.length === 0 || typeof map === 'undefined') return;
+            const pick = _hrWarnMatches[_hrWarnCycleIdx % _hrWarnMatches.length];
+            _hrWarnCycleIdx++;
+            const cb = document.getElementById('layer-inspection');
+            if (cb && !cb.checked) {
+                cb.checked = true;
+                cb.dispatchEvent(new Event('change'));
+            }
+            if (!window.inspectionLoaded && window.loadInspection) window.loadInspection();
+            map.flyTo({ center: [pick.item.lon, pick.item.lat], zoom: 14, duration: 1000 });
+            showWeatherPopup(pick.item.lon, pick.item.lat, false);
+        };
+    }
+
+    window.refreshWeatherHrWarnings = updateHrWeatherAlertSummary;
+    window.queryRainForecastAt = function (lng, lat) {
+        if (!STATE.loaded) return null;
+        return queryRainfallAtCoord(lng, lat);
+    };
 
     function setupTimelineMarkers() {
         if (!STATE.data || !STATE.data.times) return;
@@ -4832,6 +5313,10 @@ function applyAdvancedFilters() {
                 .setLngLat([lng, lat])
                 .setHTML(html)
                 .addTo(map);
+            STATE.activePopup.on('close', () => {
+                STATE.activePopup = null;
+                STATE.lastClickedCoord = null;
+            });
         }
     }
 
@@ -4923,6 +5408,14 @@ function applyAdvancedFilters() {
                     }
 
                     await loadForecastData();
+                    if (!this.checked) return;
+                    if (!STATE.loaded) {
+                        this.checked = false;
+                        if (player) player.classList.add('hidden');
+                        document.body.classList.remove('weather-active');
+                        showToast('⚠️ Live ECMWF forecast unavailable offline.', 'warning');
+                        return;
+                    }
                     attachMapLayer();
                     renderFrame(STATE.currentHour);
                 } else {

@@ -833,12 +833,12 @@
             }
         }
 
-        #measure-btn {
-            background: linear-gradient(135deg, #10b981, #0ea5e9);
+        .tool-menu-item.active {
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
         }
 
-        #measure-btn.active {
-            background: linear-gradient(135deg, #ef4444, #f59e0b);
+        #measure-btn.active .tool-icon {
             animation: pulse 2s infinite;
         }
 
@@ -869,13 +869,17 @@
         /* Compass Indicator */
         .compass-indicator {
             position: fixed;
-            top: 5rem;
-            right: 1rem;
+            top: 1rem;
+            right: 20.5rem;
             z-index: 2000;
             cursor: pointer;
             display: none;
             /* Toggled by JS */
             transition: all 0.3s ease;
+        }
+
+        .controls-panel.collapsed ~ .compass-indicator {
+            right: 17.5rem;
         }
 
         #compass-needle {
@@ -899,10 +903,12 @@
         .legend {
             position: fixed;
             top: 4.5rem;
-            /* Moved down to avoid overlap with Map Controls */
+            /* Moved down to avoid overlap with collapsed Map Controls */
             right: 1rem;
             bottom: auto;
             max-width: 300px;
+            max-height: calc(100vh - 11rem);
+            overflow-y: auto;
             padding: 0.75rem 1rem;
             background: rgba(15, 23, 42, 0.95);
             backdrop-filter: blur(10px);
@@ -913,6 +919,13 @@
             color: #cbd5e1;
             z-index: 1000;
             transition: all 0.3s ease;
+        }
+
+        @media (min-width: 769px) {
+            .controls-panel:not(.collapsed) ~ .legend {
+                right: 20.5rem;
+                top: 4.5rem;
+            }
         }
 
         .legend.collapsed {
@@ -1068,9 +1081,10 @@
 
         @media (max-width: 768px) {
             .search-container {
-                width: calc(100vw - 2rem);
+                width: auto;
                 top: 0.5rem;
                 left: 0.5rem;
+                right: 0.5rem;
             }
 
             .search-box {
@@ -1698,9 +1712,10 @@
 
             .search-container {
                 position: fixed;
-                width: calc(100vw - 2rem);
+                width: auto;
                 top: 0.5rem;
                 left: 0.5rem;
+                right: 0.5rem;
                 z-index: 2000;
             }
 
@@ -1984,6 +1999,19 @@
             -webkit-backdrop-filter: blur(12px);
         }
 
+        @media (max-width: 768px) {
+            #measure-result {
+                top: 4.5rem;
+                bottom: auto;
+                left: 0.75rem;
+                min-width: 145px;
+            }
+        }
+
+        #undo-measure:hover {
+            background: rgba(16, 185, 129, 0.35) !important;
+        }
+
         #clear-measure:hover {
             background: rgba(255, 255, 255, 0.15) !important;
         }
@@ -2123,6 +2151,54 @@
             width: min(740px, calc(100vw - 2rem));
             pointer-events: auto;
             transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @media (min-width: 769px) and (max-width: 1520px) {
+            .weather-player {
+                left: calc(355px + (100vw - 445px) / 2);
+                width: min(680px, calc(100vw - 460px));
+            }
+        }
+
+        .weather-hr-warning {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+            padding: 5px 10px;
+            border-radius: 8px;
+            font-size: 0.72rem;
+            cursor: pointer;
+            transition: filter 0.15s ease, transform 0.15s ease;
+        }
+
+        .weather-hr-warning:hover {
+            filter: brightness(1.12);
+        }
+
+        .weather-hr-warning.warn-l1 {
+            background: rgba(234, 179, 8, 0.18);
+            border: 1px solid rgba(234, 179, 8, 0.5);
+            color: #fde047;
+        }
+
+        .weather-hr-warning.warn-l2 {
+            background: rgba(249, 115, 22, 0.2);
+            border: 1px solid rgba(249, 115, 22, 0.55);
+            color: #fdba74;
+        }
+
+        .weather-hr-warning.warn-l3 {
+            background: rgba(239, 68, 68, 0.24);
+            border: 1px solid rgba(239, 68, 68, 0.65);
+            color: #fca5a5;
+        }
+
+        .weather-hr-cta {
+            font-weight: 700;
+            white-space: nowrap;
+            opacity: 0.92;
         }
 
         .weather-player.hidden {
